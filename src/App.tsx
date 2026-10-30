@@ -485,10 +485,7 @@ export function App() {
       }
 
       if (cornerFrameRef.current) {
-        const frameOpacity = 1;
-        cornerFrameRef.current.style.pointerEvents =
-          frameOpacity > 0.05 ? "auto" : "none";
-        cornerFrameRef.current.style.opacity = frameOpacity.toFixed(3);
+        cornerFrameRef.current.style.pointerEvents = "none";
       }
 
       // 2. Componentes de nubes (CloudShader & Cloudscape) ocupando SIEMPRE el 100% de la pantalla (fixed inset-0)
@@ -695,10 +692,10 @@ export function App() {
       ===================================================================== */}
       <div
         ref={cornerFrameRef}
-        className="fixed inset-0 pointer-events-none z-40 flex flex-col justify-between p-7 sm:p-11 md:p-14"
+        className="fixed inset-0 pointer-events-none z-40 overflow-hidden"
       >
         <div
-          className="w-full h-full flex flex-col justify-between"
+          className="relative w-full h-full"
           style={{
             opacity: introRevealed ? 1 : 0,
             filter: introRevealed ? "blur(0px)" : "blur(24px)",
@@ -706,107 +703,102 @@ export function App() {
               "opacity 1.8s cubic-bezier(0.16, 1, 0.3, 1), filter 1.8s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          {/* Esquinas Superiores */}
-          <div className="flex items-start justify-between w-full">
-            {/* Top-Left: Navegación Editorial */}
-            <div
-              className="flex flex-col gap-1"
-              style={{ pointerEvents: introRevealed ? "auto" : "none" }}
+          {/* Top-Left Corner: solo visible al pasar el puntero */}
+          <div
+            className="absolute top-0 left-0 p-7 sm:p-11 md:p-14 flex flex-col gap-1 opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto cursor-default group"
+          >
+            <a
+              href="#cielo"
+              className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] leading-[1.15] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
             >
+              CONCIENTIZACIÓN DEL
+              <br />
+              AUTISMO
+            </a>
+            <nav className="hidden md:flex items-center gap-4 mt-2 text-[11px] font-display font-semibold uppercase tracking-tight text-white/85">
               <a
-                href="#cielo"
-                className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] leading-[1.15] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
+                href="#historia"
+                className="hover:text-[#f4eec7] transition-colors"
               >
-                CONCIENTIZACIÓN DEL
-                <br />
-                AUTISMO
+                CAUSA
               </a>
-              <nav className="hidden md:flex items-center gap-4 mt-2 text-[11px] font-display font-semibold uppercase tracking-tight text-white/85">
-                <a
-                  href="#historia"
-                  className="hover:text-[#f4eec7] transition-colors"
-                >
-                  CAUSA
-                </a>
-                <a
-                  href="#realidad"
-                  className="hover:text-[#f4eec7] transition-colors"
-                >
-                  REALIDAD
-                </a>
-                <a
-                  href="#charlas"
-                  className="hover:text-[#f4eec7] transition-colors"
-                >
-                  CHARLAS
-                </a>
-                <a
-                  href="#eventos"
-                  className="hover:text-[#f4eec7] transition-colors"
-                >
-                  EVENTOS
-                </a>
-              </nav>
-            </div>
+              <a
+                href="#realidad"
+                className="hover:text-[#f4eec7] transition-colors"
+              >
+                REALIDAD
+              </a>
+              <a
+                href="#charlas"
+                className="hover:text-[#f4eec7] transition-colors"
+              >
+                CHARLAS
+              </a>
+              <a
+                href="#eventos"
+                className="hover:text-[#f4eec7] transition-colors"
+              >
+                EVENTOS
+              </a>
+            </nav>
+          </div>
 
-            {/* Top-Right: Centro de Atención Integral + Controles discretos */}
-            <div
-              className="flex flex-col items-end text-right gap-1"
-              style={{ pointerEvents: introRevealed ? "auto" : "none" }}
+          {/* Top-Right Corner: Centro de Atención Integral + Controles */}
+          <div
+            className="absolute top-0 right-0 p-7 sm:p-11 md:p-14 flex flex-col items-end text-right gap-1 opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto cursor-default group"
+          >
+            <a
+              href="#cielo"
+              className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] leading-[1.15] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
             >
-              <a
-                href="#cielo"
-                className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] leading-[1.15] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
+              CENTRO DE ATENCIÓN
+              <br />
+              INTEGRAL
+            </a>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={toggleAmbientSound}
+                className="inline-flex items-center gap-1.5 text-[11px] font-display font-bold uppercase tracking-tight text-white/90 hover:text-[#f4eec7] transition-colors"
+                title="Alternar sonido ambiente"
               >
-                CENTRO DE ATENCIÓN
-                <br />
-                INTEGRAL
-              </a>
-              <div className="flex items-center gap-3 mt-2">
-                <button
-                  onClick={toggleAmbientSound}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-display font-bold uppercase tracking-tight text-white/90 hover:text-[#f4eec7] transition-colors"
-                  title="Alternar sonido ambiente"
-                >
-                  {ambientAudio ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#f4eec7]" />
-                  ) : (
-                    <VolumeX className="w-3.5 h-3.5 opacity-75" />
-                  )}
-                  <span>{ambientAudio ? "SONIDO ON" : "SONIDO OFF"}</span>
-                </button>
-                <span className="text-white/40">•</span>
-                <button
-                  onClick={() => setIsAdminModalOpen(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-display font-bold uppercase tracking-tight text-white/90 hover:text-[#f4eec7] transition-colors"
-                  title="Acceso Administrador"
-                >
-                  <Lock className="w-3 h-3" />
-                  <span>ADMIN</span>
-                </button>
-              </div>
+                {ambientAudio ? (
+                  <Volume2 className="w-3.5 h-3.5 text-[#f4eec7]" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 opacity-75" />
+                )}
+                <span>{ambientAudio ? "SONIDO ON" : "SONIDO OFF"}</span>
+              </button>
+              <span className="text-white/40">•</span>
+              <button
+                onClick={() => setIsAdminModalOpen(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-display font-bold uppercase tracking-tight text-white/90 hover:text-[#f4eec7] transition-colors"
+                title="Acceso Administrador"
+              >
+                <Lock className="w-3 h-3" />
+                <span>ADMIN</span>
+              </button>
             </div>
           </div>
 
-          {/* Esquinas Inferiores */}
-          <div className="flex items-end justify-between w-full">
-            <div style={{ pointerEvents: introRevealed ? "auto" : "none" }}>
-              <span className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
-                CAI • IMPULSA
-              </span>
-            </div>
+          {/* Bottom-Left Corner: CAI • IMPULSA */}
+          <div
+            className="absolute bottom-0 left-0 p-7 sm:p-11 md:p-14 opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto cursor-default group"
+          >
+            <span className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+              CAI • IMPULSA
+            </span>
+          </div>
 
-            <div
-              className="text-right"
-              style={{ pointerEvents: introRevealed ? "auto" : "none" }}
+          {/* Bottom-Right Corner: SEMBRANDO OPORTUNIDADES */}
+          <div
+            className="absolute bottom-0 right-0 p-7 sm:p-11 md:p-14 text-right opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto cursor-default group"
+          >
+            <a
+              href="#charlas"
+              className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
             >
-              <a
-                href="#charlas"
-                className="font-display text-xs sm:text-sm font-bold uppercase tracking-[-0.02em] text-white hover:text-[#f4eec7] transition-colors drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
-              >
-                SEMBRANDO OPORTUNIDADES
-              </a>
-            </div>
+              SEMBRANDO OPORTUNIDADES
+            </a>
           </div>
         </div>
       </div>

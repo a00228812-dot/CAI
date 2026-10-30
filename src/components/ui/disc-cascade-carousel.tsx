@@ -342,7 +342,7 @@ const CSS =
   ".dcc-opt[aria-current] .dcc-optt{font-weight:600}" +
   ".dcc-optn{font-size:10px;opacity:.45;font-variant-numeric:tabular-nums}" +
   ".dcc-opty{margin-left:auto;font-size:10px;opacity:.45}" +
-  ".dcc-head{position:absolute;top:calc(var(--dcc-pad) + 72px);left:var(--dcc-pad);z-index:4;width:clamp(170px,21cqw,290px);pointer-events:none}" +
+  ".dcc-head{position:absolute;top:var(--dcc-pad);left:var(--dcc-pad);z-index:4;width:clamp(170px,21cqw,290px);pointer-events:none}" +
   ".dcc-title{margin:0 0 10px;font-weight:400;font-size:clamp(20px,2.5cqw,34px);line-height:.98;" +
   "letter-spacing:-.01em;text-transform:uppercase;text-wrap:balance}" +
   ".dcc-dl{margin:0}" +
@@ -354,12 +354,12 @@ const CSS =
   ".dcc-in{animation:dcc-in .8s cubic-bezier(.2,.7,.1,1) both;animation-delay:calc(var(--i,0) * 60ms)}" +
   "@keyframes dcc-in{from{opacity:0;transform:translateY(12px);filter:blur(5px)}}" +
   ".dcc-revs{position:absolute;bottom:calc(var(--dcc-pad) * 1.1);left:50%;transform:translateX(-50%);z-index:4;" +
-  "display:flex;gap:clamp(60px,14cqw,180px);pointer-events:none}" +
+  "display:flex;justify-content:center;align-items:center;pointer-events:none;text-align:center}" +
   ".dcc-rev{width:clamp(130px,15cqw,200px);text-align:center}" +
   ".dcc-stars{font-size:8px;letter-spacing:3px;margin-bottom:6px}" +
   ".dcc-src{font-size:6.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;margin-bottom:4px}" +
   ".dcc-quote{margin:0;font-size:clamp(13px,1.35cqw,17px);line-height:1.02;text-transform:uppercase;text-wrap:balance}" +
-  ".dcc-ctl{position:absolute;right:var(--dcc-pad);bottom:calc(var(--dcc-pad) + 40px);z-index:5;display:flex;align-items:center;gap:10px}" +
+  ".dcc-ctl{position:absolute;right:var(--dcc-pad);bottom:var(--dcc-pad);z-index:5;display:flex;align-items:center;gap:10px}" +
   ".dcc-btn{display:grid;place-items:center;width:34px;height:34px;margin:0;padding:0;border-radius:999px;" +
   "border:1px solid color-mix(in oklab,currentColor 22%,transparent);background:none;color:inherit;cursor:pointer;" +
   "transition:background .2s,opacity .2s,transform .2s}" +
@@ -369,7 +369,7 @@ const CSS =
   ".dcc-btn:focus-visible,.dcc-menubtn:focus-visible,.dcc-link:focus-visible{outline:2px solid currentColor;outline-offset:3px}" +
   ".dcc-count{font-size:11px;letter-spacing:.08em;font-variant-numeric:tabular-nums;min-width:58px;text-align:center}" +
   ".dcc-count b{font-weight:600}" +
-  ".dcc-hint{position:absolute;left:var(--dcc-pad);bottom:calc(var(--dcc-pad) + 40px);z-index:4;font-size:9px;letter-spacing:.18em;" +
+  ".dcc-hint{position:absolute;left:var(--dcc-pad);bottom:var(--dcc-pad);z-index:4;font-size:9px;letter-spacing:.18em;" +
   "text-transform:uppercase;opacity:.45;pointer-events:none;line-height:34px}" +
   ".dcc-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}" +
   "@container (max-width:720px){.dcc-link{display:none}.dcc-rev+.dcc-rev{display:none}.dcc-hint{display:none}" +
@@ -1117,20 +1117,30 @@ export function DiscCascadeCarousel({
         })}
       </div>
 
-      {reviews && quotes.length ? (
-        <div className="dcc-revs" key={"r" + active} aria-hidden="true">
-          {quotes.map((q, k) => {
-            const stars = Math.max(0, Math.min(5, Math.round(q.stars ?? 5)))
-            return (
-              <figure className="dcc-rev dcc-in" key={k} style={{ margin: 0, ["--i" as string]: k + 3 } as React.CSSProperties}>
-                <div className="dcc-stars">{"★".repeat(stars) + "☆".repeat(5 - stars)}</div>
-                <figcaption className="dcc-src">{q.source}</figcaption>
-                <blockquote className="dcc-quote" style={{ fontFamily: serif }}>
-                  {"“" + q.quote + "”"}
-                </blockquote>
-              </figure>
-            )
-          })}
+      {current ? (
+        <div className="dcc-revs" key={"sel-title-" + active} aria-hidden="true">
+          <figure
+            className="dcc-rev dcc-in"
+            style={{
+              margin: 0,
+              width: "auto",
+              maxWidth: "min(88vw, 750px)",
+              textAlign: "center",
+            }}
+          >
+            <blockquote
+              className="dcc-quote"
+              style={{
+                fontFamily: serif,
+                fontSize: "clamp(16px, 1.9cqw, 25px)",
+                lineHeight: 1.25,
+                letterSpacing: "0.015em",
+                textTransform: "uppercase",
+              }}
+            >
+              {current.title}
+            </blockquote>
+          </figure>
         </div>
       ) : null}
 
