@@ -402,7 +402,7 @@ export function App() {
   };
 
   // Temporizador exacto al iniciar la página:
-  // Durante los primeros 3.5 segundos se reproduce el Logo Reveal de CAI en el centro.
+  // Durante los primeros 3.5 segundos se reproduce el Logo Reveal de CAI en el centro sobre el video NUBES.mp4.
   // A los 3.5s exactos se desvanece con fade out suave y se revela la interfaz.
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
@@ -625,12 +625,12 @@ export function App() {
       ===================================================================== */}
       {showLogoIntro && (
         <div
-          className={`fixed inset-0 z-[60] flex items-center justify-center bg-[#020611] transition-opacity duration-1000 ease-out ${
-            logoFadeOut ? "opacity-0 pointer-events-none" : "opacity-100 pointer-events-auto"
+          className={`fixed inset-0 z-40 flex items-center justify-center pointer-events-none transition-opacity duration-1000 ease-out ${
+            logoFadeOut ? "opacity-0" : "opacity-100"
           }`}
           style={{ willChange: "opacity" }}
         >
-          <CaiGlassReveal className="w-full h-full" />
+          <CaiGlassReveal className="w-full h-full pointer-events-none" />
         </div>
       )}
 

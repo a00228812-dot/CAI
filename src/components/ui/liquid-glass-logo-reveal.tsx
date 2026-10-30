@@ -520,9 +520,12 @@ void main() {
     col = mix(bg, glass, cov);
   }
 
+  float tileAlpha = clamp(0.5 - sd / soft, 0.0, 1.0) * uPlateAlpha;
+  float logoAlpha = lg.a * uBare;
+  float totalAlpha = clamp(tileAlpha + logoAlpha, 0.0, 1.0);
   vec3 outc = mix(plain, col, uPlateAlpha);
   outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-  outColor = vec4(outc, 1.0);
+  outColor = vec4(outc * totalAlpha, totalAlpha);
 }`
 
 /* ------------------------------------------------------------------ *
@@ -531,7 +534,7 @@ void main() {
 type Frame = ReturnType<typeof frameAt>
 
 function createRenderer(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false })
+  const gl = canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: true, alpha: true })
   if (!gl) return null
   const compile = (type: number, src: string) => {
     const sh = gl.createShader(type)!
@@ -634,6 +637,7 @@ const smoother = (a: number, b: number, x: number) => {
 }
 
 function hexToRgb(hex: string): [number, number, number] {
+  if (!hex || hex === "transparent") return [0, 0, 0]
   let h = hex.replace("#", "")
   if (h.length === 3) h = h.replace(/./g, "$&$&")
   const v = parseInt(h.slice(0, 6), 16) || 0
@@ -860,7 +864,7 @@ export function GlassIconReveal({
       role="img"
       aria-label={label}
       className={cn("relative isolate cursor-pointer overflow-hidden select-none", className)}
-      style={{ backgroundColor: settings.background, ...style }}
+      style={{ backgroundColor: settings.background === "transparent" ? "transparent" : settings.background, ...style }}
       onClick={(e) => {
         engineRef.current?.replay()
         onClick?.(e)
@@ -1066,20 +1070,23 @@ export function CaiGlassReveal({
       logo={logoPath}
       label="Centro de Atención Integral • IMPULSA"
       look="dark"
-      background="#020611"
+      background="transparent"
       plateColor="#071324"
       logoColor="#ffffff"
       originalColors={true}
-      tileSize={320}
+      tileSize={340}
       logoScale={0.7}
       finalScale={0.85}
       loop={false}
       {...props}
       tuning={{
         startZoom: 2.2,
-        dispersion: 1.1,
+        dispersion: 1.2,
         colorBleed: 0.6,
-        sheen: 1.2,
+        sheen: 1.4,
+        halo: 0,
+        shadow: 0,
+        ripple: 0,
         ...tuning,
       }}
     />
