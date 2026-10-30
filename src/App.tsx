@@ -411,13 +411,13 @@ export function App() {
     window.scrollTo(0, 0);
     document.documentElement.style.overflow = "hidden";
 
-    // 1. A los 3.5 segundos exactos: fade out del Logo Reveal y revelado de la interfaz
+    // 1. A los 3.3 segundos exactos: fade out del Logo Reveal y revelado de la interfaz
     const timerIntro = window.setTimeout(() => {
       window.scrollTo(0, 0);
       setLogoFadeOut(true);
       setIntroRevealed(true);
       document.documentElement.style.overflow = "";
-    }, 3500);
+    }, 3300);
 
     // 2. A los 4.8 segundos: desmontar el componente del logo tras terminar el fade out
     const timerCleanup = window.setTimeout(() => {

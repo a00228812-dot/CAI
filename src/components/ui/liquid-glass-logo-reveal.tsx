@@ -458,6 +458,7 @@ void main() {
     float streak = 0.35 * uStreak * bw * mix(0.15, 1.0, cornerW) * pow(1.0 - xf, 1.5) * uOptics;
     vec2 tangent = vec2(-nOut.y, nOut.x);
     vec3 acc = vec3(0.0), wsum = vec3(0.0);
+    float logoAlphaAcc = 0.0;
     for (int i = 0; i < 20; i++) {
       float lam = (float(i) + 0.5) / 20.0;
       float c = uDisp * (1.0 - 2.0 * lam);
@@ -473,9 +474,11 @@ void main() {
       vec4 l = logoAt(sp, rblur + 0.12 * streak + uFaceDisp * 0.5 * max(c, 0.0) * faceOnly, foot);
       vec3 w = spectrum(lam);
       acc += mix(back, l.rgb, l.a) * w;
+      logoAlphaAcc += l.a;
       wsum += w;
     }
     vec3 trans = acc / wsum;
+    float avgLogoA = logoAlphaAcc / 20.0;
     float tl = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     trans = clamp(tl + (trans - tl) * (1.0 + uVivid * uOptics), 0.0, 1.0);
     float hazeLum = dot(trans, vec3(0.2126, 0.7152, 0.0722));
@@ -520,7 +523,13 @@ void main() {
     col = mix(bg, glass, cov);
   }
 
-  float tileAlpha = clamp(0.5 - sd / soft, 0.0, 1.0) * uPlateAlpha;
+  float glassTileA = clamp(
+    avgLogoA +
+    (fres * 0.85 + spc * 1.5 + sheen * 1.0 + (1.0 - x) * 0.4) * glassAmt,
+    0.0,
+    1.0
+  );
+  float tileAlpha = clamp(0.5 - sd / soft, 0.0, 1.0) * glassTileA * uPlateAlpha;
   float logoAlpha = lg.a * uBare;
   float totalAlpha = clamp(tileAlpha + logoAlpha, 0.0, 1.0);
   vec3 outc = mix(plain, col, uPlateAlpha);
@@ -1069,15 +1078,18 @@ export function CaiGlassReveal({
     <GlassIconReveal
       logo={logoPath}
       label="Centro de Atención Integral • IMPULSA"
-      look="dark"
+      look="light"
       background="transparent"
-      plateColor="#071324"
+      plateColor="transparent"
+      iconPlate={false}
+      keepPlate={false}
       logoColor="#ffffff"
       originalColors={true}
       tileSize={340}
-      logoScale={0.7}
+      logoScale={0.72}
       finalScale={0.85}
       loop={false}
+      speed={1.06}
       {...props}
       tuning={{
         startZoom: 2.2,
@@ -1087,6 +1099,7 @@ export function CaiGlassReveal({
         halo: 0,
         shadow: 0,
         ripple: 0,
+        present: 2.2,
         ...tuning,
       }}
     />
