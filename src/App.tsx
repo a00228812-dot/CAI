@@ -485,7 +485,9 @@ export function App() {
       }
 
       if (cornerFrameRef.current) {
-        const frameOpacity = Math.max(0.35, dayOpacity);
+        const frameOpacity = Math.max(0, dayOpacity);
+        cornerFrameRef.current.style.pointerEvents =
+          frameOpacity > 0.05 ? "auto" : "none";
         cornerFrameRef.current.style.opacity = frameOpacity.toFixed(3);
       }
 
@@ -1015,6 +1017,8 @@ export function App() {
                   defaultIndex={0}
                   loop
                   autoplay={4500}
+                  discSize="clamp(160px, min(40vmin, 30vw), 340px)"
+                  spacing={1.06}
                   background="radial-gradient(120% 90% at 50% 40%, rgba(13, 26, 45, 0.88), rgba(3, 7, 16, 0.98))"
                   color="#ecebe7"
                   serif="Playfair Display, Georgia, serif"

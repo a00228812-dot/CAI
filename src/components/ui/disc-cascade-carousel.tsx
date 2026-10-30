@@ -284,7 +284,7 @@ const CSS =
   ".dcc-root[data-dragging],.dcc-root[data-dragging] .dcc-slide{cursor:grabbing}" +
   ".dcc-frame{position:absolute;inset:calc(var(--dcc-pad) * .45);pointer-events:none;z-index:1;" +
   "border:1px solid color-mix(in oklab,currentColor 14%,transparent)}" +
-  ".dcc-stage{position:absolute;left:50%;top:52%;width:var(--dcc-s);aspect-ratio:1/1;" +
+  ".dcc-stage{position:absolute;left:50%;top:39%;width:var(--dcc-s);aspect-ratio:1/1;" +
   "transform:translate(-50%,-50%);perspective:calc(var(--dcc-s) * 3.2)}" +
   ".dcc-slide{position:absolute;inset:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;" +
   "border-radius:50%;cursor:pointer;will-change:transform;transform-style:preserve-3d;" +
@@ -354,7 +354,7 @@ const CSS =
   ".dcc-in{animation:dcc-in .8s cubic-bezier(.2,.7,.1,1) both;animation-delay:calc(var(--i,0) * 60ms)}" +
   "@keyframes dcc-in{from{opacity:0;transform:translateY(12px);filter:blur(5px)}}" +
   ".dcc-revs{position:absolute;bottom:calc(var(--dcc-pad) * 1.1);left:50%;transform:translateX(-50%);z-index:4;" +
-  "display:flex;gap:clamp(24px,7cqw,96px);pointer-events:none}" +
+  "display:flex;gap:clamp(60px,14cqw,180px);pointer-events:none}" +
   ".dcc-rev{width:clamp(130px,15cqw,200px);text-align:center}" +
   ".dcc-stars{font-size:8px;letter-spacing:3px;margin-bottom:6px}" +
   ".dcc-src{font-size:6.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;margin-bottom:4px}" +
