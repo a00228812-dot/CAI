@@ -3,7 +3,7 @@ import { CloudShader } from "@/components/ui/cloud-shader";
 import Cloudscape from "@/components/ui/cloudscape";
 import DiscCascadeCarousel, { DiscCascadeItem } from "@/components/ui/disc-cascade-carousel";
 import VideoPlayer from "@/components/ui/video-player";
-import { GlassRevealCai } from "@/components/ui/liquid-glass-logo-reveal";
+import { GlassReveal21st } from "@/components/ui/liquid-glass-logo-reveal";
 import ProceduralGroundBackground from "@/components/ui/procedural-ground-background";
 const nubesVideoSrc = "/NUBES.mp4";
 import {
@@ -413,13 +413,14 @@ export function App() {
 
     const revealTimer = window.setTimeout(() => {
       window.scrollTo(0, 0);
+      setShowIntroReveal(false);
       setIntroRevealed(true);
       document.documentElement.style.overflow = "";
     }, 3300);
 
     const cleanupTimer = window.setTimeout(() => {
       setShowIntroReveal(false);
-    }, 4100);
+    }, 3300);
 
     return () => {
       window.clearTimeout(revealTimer);
@@ -704,16 +705,8 @@ export function App() {
           INTRO LOGO REVEAL (EN EL MEDIO, EXACTAMENTE 3.3 SEGUNDOS)
       ===================================================================== */}
       {showIntroReveal && (
-        <div
-          className={`fixed inset-0 z-30 pointer-events-none flex items-center justify-center transition-opacity duration-700 ease-out select-none ${
-
-            introRevealed ? "opacity-0 pointer-events-none" : "opacity-100"
-          }`}
-          style={{ willChange: "opacity" }}
-        >
-          <div className="relative w-full h-full flex items-center justify-center">
-            <GlassRevealCai className="w-full h-full" />
-          </div>
+        <div className="fixed inset-0 z-[9999]">
+          <GlassReveal21st className="h-svh min-h-[420px] w-full" />
         </div>
       )}
 

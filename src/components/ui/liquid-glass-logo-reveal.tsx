@@ -1,19 +1,21 @@
+// --- Component ---
 "use client"
 
 import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 /*
- * 21st.dev Glass Reveal: the mark lingers big against the rim of a clear glass tile, the
+ * 21st.dev Glass Reveal: the 21st.dev mark lingers big against the rim of a clear glass tile, the
  * glass bends it into colour at the corners, then lets go and leaves the mark.
  * Self-contained: the reveal engine is inlined below. One WebGL2 pass, no dependencies.
  * Shader and spring timeline ported from zanwei/glass-icon-reveal (MIT):
  * https://github.com/zanwei/glass-icon-reveal
  */
 
-export type Look = "light" | "dark"
+type Look = "light" | "dark"
 
-export interface GlassTuning {
+interface GlassTuning {
   /** How far the slab stands above the logo, so how hard the rim bends it */
   opticalDepth: number
   /** Colour split of everything the rim draws in */
@@ -55,7 +57,7 @@ export interface GlassTuning {
   lightTurn: number
 }
 
-export interface Settings extends GlassTuning {
+interface Settings extends GlassTuning {
   tileSize: number
   logoScale: number
   finalScale: number
@@ -63,7 +65,6 @@ export interface Settings extends GlassTuning {
   iconPlate: boolean
   keepPlate: boolean
   originalColors: boolean
-  transparent: boolean
   background: string
   plateColor: string
   logoColor: string
@@ -71,73 +72,23 @@ export interface Settings extends GlassTuning {
 }
 
 const LIGHT: Settings = {
-  tileSize: 256,
-  logoScale: 0.7,
-  finalScale: 0.69,
-  logoOffset: [0, 0],
-  iconPlate: false,
-  keepPlate: false,
-  originalColors: false,
-  transparent: false,
-  opticalDepth: 1.1,
-  dispersion: 1.7,
-  colorBleed: 1.25,
-  doubleBevel: 1,
-  bevelWidth: 0.14,
-  corner: 4.8,
-  cornerPull: 2.1,
-  cornerWidth: 2.2,
-  cornerFocus: 0.58,
-  edgeSmear: 2.85,
-  stretch: 0,
-  tilt: 0.35,
-  bulge: 1,
-  specular: 1,
-  halo: 0,
-  shadow: 1,
-  ripple: 1,
-  bounce: 0,
-  response: 0.42,
-  startSize: 0.2,
-  startZoom: 2.6,
-  glide: 2.3,
-  present: 2.4,
-  drift: 0.12,
-  swell: 0.5,
-  focus: 1,
-  sheen: 1,
-  lightTurn: 0.9,
-  hold: 1,
-  background: "#e9e9eb",
-  plateColor: "#ffffff",
-  logoColor: "#ffffff",
+  tileSize: 256, logoScale: 0.7, finalScale: 0.69, logoOffset: [0, 0], iconPlate: false, keepPlate: false, originalColors: false,
+  opticalDepth: 1.1, dispersion: 1.7, colorBleed: 1.25, doubleBevel: 1, bevelWidth: 0.14, corner: 4.8,
+  cornerPull: 2.1, cornerWidth: 2.2, cornerFocus: 0.58, edgeSmear: 2.85, stretch: 0, tilt: 0.35, bulge: 1,
+  specular: 1, halo: 0, shadow: 1, ripple: 1,
+  bounce: 0, response: 0.42, startSize: 0.2, startZoom: 2.6, glide: 2.1, present: 2.2, drift: 0.12, swell: 0.5, focus: 1,
+  sheen: 1, lightTurn: 0.9,
+  hold: 1, background: "#e9e9eb", plateColor: "#ffffff", logoColor: "#0e1428",
 }
 
-export const LOOKS: Record<Look, Settings> = {
+const LOOKS: Record<Look, Settings> = {
   light: LIGHT,
   dark: {
-    ...LIGHT,
-    logoScale: 0.72,
-    finalScale: 1,
-    iconPlate: true,
-    halo: 1,
-    shadow: 0,
-    ripple: 0.5,
-    startZoom: 1.6,
-    drift: 0.05,
-    opticalDepth: 0.75,
-    bevelWidth: 0.22,
-    dispersion: 0.9,
-    colorBleed: 0.45,
-    corner: 5,
-    cornerPull: 1.4,
-    edgeSmear: 1.2,
-    tilt: 0,
-    cornerWidth: 1.2,
-    cornerFocus: 0.4,
-    background: "#000000",
-    plateColor: "#05070b",
-    logoColor: "#ffffff",
+    ...LIGHT, logoScale: 0.72, finalScale: 1, iconPlate: true,
+    halo: 1, shadow: 0, ripple: 0.5, startZoom: 1.6, drift: 0.05,
+    opticalDepth: 0.75, bevelWidth: 0.22, dispersion: 0.9,
+    colorBleed: 0.45, corner: 5, cornerPull: 1.4, edgeSmear: 1.2, tilt: 0, cornerWidth: 1.2, cornerFocus: 0.4,
+    background: "#000000", plateColor: "#05070b", logoColor: "#ffffff",
   },
 }
 
@@ -147,7 +98,7 @@ export const LOOKS: Record<Look, Settings> = {
 const TEX = 1024 // logo texture size
 const BOX = 0.75 // share of the texture the logo fills (the rest is room for the SDF)
 
-export interface LogoData {
+interface LogoData {
   canvas: HTMLCanvasElement
   sdf: Float32Array
 }
@@ -155,11 +106,9 @@ export interface LogoData {
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image()
-    if (!src.startsWith("data:") && typeof window !== "undefined" && src.startsWith("http") && !src.startsWith(window.location.origin)) {
-      img.crossOrigin = "anonymous"
-    }
+    if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error("GlassIconReveal: the logo could not be loaded: " + src))
+    img.onerror = () => reject(new Error("GlassIconReveal: the logo could not be loaded"))
     img.src = src
   })
 }
@@ -199,20 +148,12 @@ function fitToTexture(source: CanvasImageSource, sw: number, sh: number) {
   const d = tc.getImageData(0, 0, TEX, TEX).data
 
   let opaque = true
-  for (let i = 3; i < d.length; i += 4 * 97) {
-    if (d[i] < 250) {
-      opaque = false
-      break
-    }
-  }
+  for (let i = 3; i < d.length; i += 4 * 97) if (d[i] < 250) { opaque = false; break }
   const key = [d[0], d[1], d[2]]
   const keyAlpha = (r: number, g: number, b: number) =>
     Math.min(1, Math.max(0, (Math.hypot(r - key[0], g - key[1], b - key[2]) / 441 - 0.08) / 0.2))
 
-  let x0 = TEX,
-    y0 = TEX,
-    x1 = -1,
-    y1 = -1
+  let x0 = TEX, y0 = TEX, x1 = -1, y1 = -1
   for (let y = 0; y < TEX; y++) {
     for (let x = 0; x < TEX; x++) {
       const i = (y * TEX + x) * 4
@@ -253,13 +194,9 @@ function buildSdf(canvas: HTMLCanvasElement) {
   const inner = new Float64Array(n)
   for (let i = 0; i < n; i++) {
     const a = alpha[i * 4 + 3] / 255
-    if (a >= 1) {
-      outer[i] = 0
-      inner[i] = INF
-    } else if (a <= 0) {
-      outer[i] = INF
-      inner[i] = 0
-    } else {
+    if (a >= 1) { outer[i] = 0; inner[i] = INF }
+    else if (a <= 0) { outer[i] = INF; inner[i] = 0 }
+    else {
       const dd = 0.5 - a
       outer[i] = dd > 0 ? dd * dd : 0
       inner[i] = dd < 0 ? dd * dd : 0
@@ -305,10 +242,10 @@ function edt1d(grid: Float64Array, offset: number, stride: number, f: Float64Arr
   }
 }
 
-// One SDF per logo for the whole page: building it takes ~40-100 ms, remounts and twins reuse it.
+// One SDF per logo for the whole page: building it takes ~100 ms, remounts and twins reuse it.
 const logoCache = new Map<string, Promise<LogoData>>()
 
-export function loadLogo(logo: string) {
+function loadLogo(logo: string) {
   let job = logoCache.get(logo)
   if (!job) {
     job = loadImage(logoUrl(logo)).then((img) => {
@@ -376,7 +313,6 @@ uniform float uGlow;       // colour bleed in the rim, plate units on screen
 uniform float uFaceDisp;   // lateral colour across the face
 uniform float uVivid;      // chroma lift of the dispersed light
 
-uniform float uTransparent;
 uniform float uDisp;
 uniform float uDouble;
 uniform float uBevelW;
@@ -516,12 +452,6 @@ void main() {
   bg = mix(bg, haloCol, clamp(uHalo * (0.30 * exp(-outside / (0.025 * uPlateScale)) + 0.07 * exp(-outside / (0.12 * uPlateScale))), 0.0, 1.0) * step(0.0, sd));
 
   vec3 col = bg;
-  float fres = 0.0;
-  float spc = 0.0;
-  vec3 rimCol = vec3(1.0);
-  vec3 logoRefracted = lg.rgb;
-  float logoAlphaRefracted = lg.a;
-
   float soft = px + uBlur * 0.8 + 0.06 * uDissolve * (1.0 - uKeep) * uPlateScale;
   if (sd < soft) {
     // Lighting surface: a superellipse quarter, flat toward the face and steep at the rim.
@@ -548,8 +478,6 @@ void main() {
     float streak = 0.35 * uStreak * bw * mix(0.15, 1.0, cornerW) * pow(1.0 - xf, 1.5) * uOptics;
     vec2 tangent = vec2(-nOut.y, nOut.x);
     vec3 acc = vec3(0.0), wsum = vec3(0.0);
-    vec3 logoAcc = vec3(0.0);
-    float logoAlphaAcc = 0.0;
     for (int i = 0; i < 20; i++) {
       float lam = (float(i) + 0.5) / 20.0;
       float c = uDisp * (1.0 - 2.0 * lam);
@@ -566,13 +494,8 @@ void main() {
       vec3 w = spectrum(lam);
       acc += mix(back, l.rgb, l.a) * w;
       wsum += w;
-      logoAcc += l.rgb * l.a * w;
-      logoAlphaAcc += l.a * ((w.r + w.g + w.b) / 3.0);
     }
     vec3 trans = acc / wsum;
-    logoRefracted = logoAcc / max(wsum, vec3(1e-5));
-    logoAlphaRefracted = clamp(logoAlphaAcc / 20.0, 0.0, 1.0);
-
     float tl = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     trans = clamp(tl + (trans - tl) * (1.0 + uVivid * uOptics), 0.0, 1.0);
     // A young droplet is milky; the haze only ever lightens.
@@ -582,6 +505,7 @@ void main() {
 
     float glassAmt = pow(1.0 - uDissolve, 1.5);
     float lit = uSpec * glassAmt;
+    vec3 rimCol = mix(vec3(0.80, 0.87, 0.97), vec3(1.0), uLightGlass);
 
     // Light backdrop: the thick edge glows softly white over a clear face, with a hairline that is
     // bright along the top and right and a thin dark silhouette down the left and bottom.
@@ -604,11 +528,10 @@ void main() {
     float edge = 1.0 - Nl.z;
     vec2 ldir = rot(normalize(vec2(-0.62, 0.78)), uLightAng);
     float side = dot(nOut, ldir);
-    fres = pow(edge, 1.5);
-    rimCol = mix(vec3(0.9, 0.95, 1.0), vec3(1.0), uLightGlass);
+    float fres = pow(edge, 1.5);
     vec3 rim = rimCol * fres * (0.35 + 0.65 * max(side, -side * 0.8)) * uRim * 0.65;
     vec3 Hv = normalize(normalize(vec3(-0.45, 0.6, 0.66)) + vec3(0.0, 0.0, 1.0));
-    spc = pow(max(dot(Nl, Hv), 0.0), 140.0) * 0.8 * smoothstep(0.0, 0.25, y1);
+    float spc = pow(max(dot(Nl, Hv), 0.0), 140.0) * 0.8 * smoothstep(0.0, 0.25, y1);
     vec3 darkGlass = trans * (1.0 - 0.25 * fres) + (rim + vec3(spc)) * lit;
     darkGlass = mix(darkGlass, rimCol, uDrop * 0.4 * uSpec * (1.0 - smoothstep(0.0, 0.1 * uPlateScale, s)));
     vec3 glass = mix(darkGlass, lightGlass, uLightGlass);
@@ -622,31 +545,9 @@ void main() {
     col = mix(bg, glass, cov);
   }
 
-  if (uTransparent > 0.5) {
-    float cov = clamp(0.5 - sd / soft, 0.0, 1.0);
-    float glassAmt = pow(1.0 - uDissolve, 1.5);
-    float lit = uSpec * glassAmt;
-    float sweepD = dot(p / uPlateScale, normalize(vec2(0.8, 0.6))) - uSweep;
-    float sheen = uSheen * glassAmt * exp(-sweepD * sweepD / 0.03) * (0.55 + 0.45 * (1.0 - x));
-    float edgeLine = gauss(s, 0.005 * uPlateScale, 0.0045 * uPlateScale);
-
-    // Destellos y reflejos cristalinos del vidrio (100% transparentes sobre el video de nubes):
-    vec3 glassReflections = (rimCol * (fres * 1.2 + edgeLine * 0.8) + vec3(spc * 1.6)) * lit + vec3(sheen * 0.85);
-    float reflAlpha = clamp((fres * 0.95 + spc * 1.4 + edgeLine * 0.85 + sheen * 0.8) * lit, 0.0, 1.0) * cov;
-
-    // Logo CAI nítido refractado con sus colores puros:
-    float logoA = mix(lg.a * uBare, logoAlphaRefracted, uPlateAlpha);
-    vec3 logoC = mix(lg.rgb, logoRefracted, uPlateAlpha);
-
-    // Color final y transparencia:
-    vec3 crystalCol = logoC + glassReflections;
-    float totalAlpha = clamp(logoA + reflAlpha, 0.0, 1.0);
-    outColor = vec4(crystalCol, totalAlpha);
-  } else {
-    vec3 outc = mix(plain, col, uPlateAlpha);
-    outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-    outColor = vec4(outc, 1.0);
-  }
+  vec3 outc = mix(plain, col, uPlateAlpha);
+  outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  outColor = vec4(outc, 1.0);
 }`
 
 /* ------------------------------------------------------------------ *
@@ -655,7 +556,7 @@ void main() {
 type Frame = ReturnType<typeof frameAt>
 
 function createRenderer(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: false, alpha: true })
+  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false })
   if (!gl) return null
   const compile = (type: number, src: string) => {
     const sh = gl.createShader(type)!
@@ -721,13 +622,12 @@ function createRenderer(canvas: HTMLCanvasElement) {
     gl!.uniform1f(U.uTile, tilePx)
     gl!.uniform1f(U.uTexSize, TEX)
     gl!.uniform1f(U.uBoxFrac, BOX)
-    if (U.uTransparent) gl!.uniform1f(U.uTransparent, fr.uTransparent)
     for (const k in fr) {
       const v = fr[k as keyof Frame]
       if (typeof v === "number" && U[k]) gl!.uniform1f(U[k], v)
     }
     gl!.uniform3fv(U.uBg, fr.uBg)
-    gl!.uniform3fv(U.PlateCol || U.uPlateCol, fr.uPlateCol)
+    gl!.uniform3fv(U.uPlateCol, fr.uPlateCol)
     gl!.uniform3fv(U.uLogoCol, fr.uLogoCol)
     gl!.uniform2fv(U.uLogoOff, fr.uLogoOff)
     gl!.drawArrays(gl!.TRIANGLES, 0, 3)
@@ -748,7 +648,7 @@ const OUTRO = 0.5 // loop only: the logo blurs away before the next reveal
 const endOf = (P: Settings) => P.present + TAIL
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x)
-const mixVal = (a: number, b: number, t: number) => a + (b - a) * t
+const mix = (a: number, b: number, t: number) => a + (b - a) * t
 const smooth = (a: number, b: number, x: number) => {
   const t = clamp01((x - a) / (b - a))
   return t * t * (3 - 2 * t)
@@ -766,7 +666,8 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 const luminance = ([r, g, b]: number[]) => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-// Step response of a spring released at t = 0, from 0 toward 1
+// Step response of a spring released at t = 0, from 0 toward 1 (damping 1 = no overshoot,
+// response = period of the undamped spring, seconds).
 function spring(t: number, response: number, damping: number) {
   if (t <= 0) return 0
   const w = (2 * Math.PI) / response
@@ -792,32 +693,35 @@ function timeToReach(level: number, response: number, damping: number) {
   return t
 }
 
+// All motion lives here; the shader only sees the resulting numbers. The droplet grows on one spring,
+// spreads from circle to squircle as it lands, the logo glides out of its magnification and the glass
+// holds it while a band of light crosses the face and the rim light turns. Then the glass lets go: the
+// bare logo stays, or with keepPlate the glass settles into a flat icon plate.
 function frameAt(T: number, P: Settings, outro = 0) {
   const tx = P.present
   const keep = P.keepPlate ? 1 : 0
   const damping = 1 - P.bounce
   const grow = spring(T + 0.01, P.response, damping)
-  const tl = timeToReach(0.85, P.response, damping) - 0.01
-  const tm = timeToReach(0.92, P.response, damping) - 0.01
+  const tl = timeToReach(0.85, P.response, damping) - 0.01 // the droplet lands: the ripple leaves
+  const tm = timeToReach(0.92, P.response, damping) - 0.01 // and spreads into the tile
   const morph = spring(T - tm, 0.4, 1)
   const drop = 1 - smooth(0.05, 1, morph)
   const appear = smooth(0, 0.08, T)
   const drift = P.drift * spring(T - 0.3, 2.2, 1)
-
+  // A quarter of the zoom goes with the landing droplet, the rest glides slowly so the logo lingers
+  // big against the rim, where the glass bends it most.
   const zoomIn = 0.25 * spring(T, 0.7, 1) + 0.75 * smoother(0, P.glide, T)
   const settle = spring(T - 0.5, 2.4, 1)
   const exit = spring(T - tx, 0.95, 1)
   const release = spring(T - tx - 0.05, 0.65, 1)
   const dome = 0.15 * P.bulge * (1 - smooth(0.4, 0.95, grow))
-  const view = (1 + (P.startZoom - 1) * (1 - zoomIn)) * (1 - 0.045 * settle) * mixVal(1, P.finalScale, exit) * (1 - 0.06 * outro)
-  const bandW = mixVal(P.bevelWidth, Math.max(P.bevelWidth, 0.4), drop)
-  const plateScale = mixVal(P.startSize, 1, grow) * (1 + drift) * (1 + 0.14 * release * (1 - keep)) * (1 - keep * (0.03 * release + 0.06 * outro))
+  const view = (1 + (P.startZoom - 1) * (1 - zoomIn)) * (1 - 0.045 * settle) * mix(1, P.finalScale, exit) * (1 - 0.06 * outro)
+  const bandW = mix(P.bevelWidth, Math.max(P.bevelWidth, 0.4), drop)
+  const plateScale = mix(P.startSize, 1, grow) * (1 + drift) * (1 + 0.14 * release * (1 - keep)) * (1 - keep * (0.03 * release + 0.06 * outro))
   const bg = hexToRgb(P.background)
-
   return {
-    uTransparent: P.transparent ? 1.0 : 0.0,
     uPlateScale: plateScale,
-    uShapeN: mixVal(2, P.corner, morph),
+    uShapeN: mix(2, P.corner, morph),
     uCornerN: P.corner,
     uOptics: 1 - smooth(0.55, 1, release),
     uPlateAlpha: keep ? appear * (1 - outro) : appear * (1 - smooth(0.45, 1, release)),
@@ -825,7 +729,7 @@ function frameAt(T: number, P: Settings, outro = 0) {
     uLogoOff: [P.logoOffset[0] * view, P.logoOffset[1] * view] as [number, number],
     uKeep: keep,
     uSheen: P.sheen,
-    uSweep: mixVal(-1.6, 1.6, smoother(0.9, tx - 0.1, T)),
+    uSweep: mix(-1.6, 1.6, smoother(0.9, tx - 0.1, T)),
     uLightAng: P.lightTurn * smoother(0.4, tx + 0.4, T),
     uBold: P.swell * 0.03 * (1 - zoomIn),
     uBlur: P.focus * 0.05 * (1 - smooth(0.3, 0.95, grow)) + 0.03 * outro,
@@ -873,8 +777,8 @@ function frameAt(T: number, P: Settings, outro = 0) {
 /* ------------------------------------------------------------------ *
  * Component
  * ------------------------------------------------------------------ */
-export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
-  /** SVG markup (`<svg …>…</svg>`) or an image URL */
+interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+  /** SVG markup (`<svg …>…</svg>`) or an image URL. Only the shape is used unless `originalColors` is on */
   logo: string
   /** Starting preset: light glass over a pale backdrop, or dark glass with an icon plate */
   look?: Look
@@ -888,8 +792,6 @@ export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivE
   keepPlate?: boolean
   /** Keep the logo's own colours instead of `logoColor` */
   originalColors?: boolean
-  /** Render with transparent background (no solid background block) */
-  transparent?: boolean
   /** Largest tile size in px; it shrinks to fit the container */
   tileSize?: number
   /** Logo half size relative to the tile's half size */
@@ -902,6 +804,9 @@ export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivE
   /** Seconds the finished logo stays before the next loop */
   hold?: number
   speed?: number
+  /** Freeze the reveal at this many seconds instead of playing it (scroll-driven or static use).
+   * Past the reveal it runs on through the loop pause and the blur-out, so 0 … end + hold + 0.5 is
+   * one seamless loop */
   time?: number
   /** Fine-tune the glass and the motion */
   tuning?: Partial<GlassTuning>
@@ -909,7 +814,7 @@ export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivE
   label?: string
 }
 
-export function GlassIconReveal({
+function GlassIconReveal({
   logo,
   look = "light",
   background,
@@ -918,12 +823,11 @@ export function GlassIconReveal({
   iconPlate,
   keepPlate,
   originalColors,
-  transparent = false,
   tileSize,
   logoScale,
   finalScale,
   logoOffset,
-  loop = true,
+  loop = false,
   hold,
   speed = 1,
   time,
@@ -938,14 +842,15 @@ export function GlassIconReveal({
   const engineRef = React.useRef<ReturnType<typeof startEngine> | null>(null)
   const [fallback, setFallback] = React.useState(false)
 
+  // Objects and arrays go through JSON so inline literals don't restart the memo every render.
   const tuningKey = JSON.stringify(tuning ?? {})
   const offsetKey = logoOffset ? logoOffset.join(",") : ""
   const settings = React.useMemo<Settings>(() => {
-    const own = { background, logoColor, plateColor, iconPlate, keepPlate, originalColors, transparent, tileSize, logoScale, finalScale, hold }
+    const own = { background, logoColor, plateColor, iconPlate, keepPlate, originalColors, tileSize, logoScale, finalScale, hold }
     const set: Partial<Settings> = Object.fromEntries(Object.entries(own).filter(([, v]) => v !== undefined))
     if (offsetKey) set.logoOffset = offsetKey.split(",").map(Number) as [number, number]
     return { ...LOOKS[look], ...set, ...(JSON.parse(tuningKey) as Partial<GlassTuning>) }
-  }, [look, background, logoColor, plateColor, iconPlate, keepPlate, originalColors, transparent, tileSize, logoScale, finalScale, hold, offsetKey, tuningKey])
+  }, [look, background, logoColor, plateColor, iconPlate, keepPlate, originalColors, tileSize, logoScale, finalScale, hold, offsetKey, tuningKey])
 
   const live = React.useRef({ settings, loop, speed, time })
   live.current = { settings, loop, speed, time }
@@ -991,7 +896,7 @@ export function GlassIconReveal({
       role="img"
       aria-label={label}
       className={cn("relative isolate cursor-pointer overflow-hidden select-none", className)}
-      style={{ backgroundColor: settings.transparent ? "transparent" : settings.background, ...style }}
+      style={{ backgroundColor: settings.background, ...style }}
       onClick={(e) => {
         engineRef.current?.replay()
         onClick?.(e)
@@ -1023,6 +928,8 @@ export function GlassIconReveal({
   )
 }
 
+// Owns the canvas: a fresh one per mount (a lost context can never be revived on the same element),
+// drawn only while on screen and only when something changed.
 function startEngine(
   wrap: HTMLDivElement,
   live: React.MutableRefObject<{ settings: Settings; loop: boolean; speed: number; time?: number }>,
@@ -1045,7 +952,7 @@ function startEngine(
 
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
   let logo: LogoData | null = null
-  let time = reduceMotion ? 1.4 : 0
+  let time = reduceMotion ? 1.4 : 0 // a still frame with the glass on
   let playing = !reduceMotion
   let pauseLeft = 0
   let outro = 0
@@ -1062,11 +969,14 @@ function startEngine(
     const { settings: P, loop, speed, time: fixed } = live.current
     const end = endOf(P)
     if (fixed !== undefined) {
+      // Past the end, the frozen time runs on through the loop pause and the blur-out.
       playing = false
       time = fixed
       outro = clamp01((fixed - end - Math.max(0.05, P.hold)) / OUTRO)
     } else if (playing && logo) {
       if (pauseLeft > 0) {
+        // Loop pause: hold the finished logo (nothing to redraw), then blur it away so the next
+        // reveal starts empty.
         pauseLeft -= dt
         const was = outro
         outro = clamp01(1 - pauseLeft / OUTRO)
@@ -1180,21 +1090,24 @@ function startEngine(
 }
 
 /* ------------------------------------------------------------------ *
- * Presets: GlassReveal21st & GlassRevealCai
+ * GlassReveal21st
  * ------------------------------------------------------------------ */
-const MARK_21ST = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="247.7 247.8 330.4 330.4"><path fill-rule="evenodd" d="M543.595 247.8C562.596 247.8 578 263.209 578 282.217V492.158C578 494.06 576.46 495.6 574.559 495.6H471.345C469.445 495.6 467.906 497.141 467.906 499.042V574.758C467.906 576.66 466.364 578.2 464.464 578.2H282.12C263.118 578.2 247.714 562.791 247.714 543.783V499.499C247.714 497.081 248.988 494.84 251.061 493.597L374.676 419.4C377.484 417.714 376.542 413.562 373.535 413.054L372.915 413H251.156C249.254 413 247.714 411.46 247.714 409.558V333.842C247.714 331.941 249.254 330.4 251.156 330.4H381.893C383.792 330.4 385.334 328.86 385.334 326.958V251.242C385.334 249.341 386.874 247.8 388.773 247.8H543.595ZM388.773 330.4C386.874 330.4 385.334 331.941 385.334 333.842V492.158C385.334 494.06 386.874 495.6 388.773 495.6H464.464C466.364 495.6 467.906 494.06 467.906 492.158V333.842C467.906 331.941 466.364 330.4 464.464 330.4H388.773Z"/></svg>`
+const MARK_21ST = "/CAI_LOGO.png"
 
 export type GlassReveal21stProps = Omit<GlassIconRevealProps, "logo">
 
+/** Every prop is optional and overrides the baked-in look; `tuning` merges into it */
 export function GlassReveal21st({ tuning, ...props }: GlassReveal21stProps) {
   return (
     <GlassIconReveal
       logo={MARK_21ST}
-      label="21st.dev"
+      label="CAI"
       look="light"
+      originalColors
       logoColor="#0045ff"
       logoScale={0.6}
       finalScale={0.8}
+      loop={false}
       {...props}
       tuning={{
         startZoom: 2.3,
@@ -1204,45 +1117,10 @@ export function GlassReveal21st({ tuning, ...props }: GlassReveal21stProps) {
   )
 }
 
-export type GlassRevealCaiProps = Omit<GlassIconRevealProps, "logo">
-
-/** Preset para el logo oficial de CAI con animación de 3.3s exactos */
-export function GlassRevealCai({ tuning, transparent = true, ...props }: GlassRevealCaiProps & { transparent?: boolean }) {
-  return (
-    <GlassIconReveal
-      logo="/CAI_LOGO.png"
-      label="Centro de Atención Integral CAI"
-      look="light"
-      transparent={transparent}
-      background="transparent"
-      plateColor="#ffffff"
-      iconPlate={false}
-      keepPlate={false}
-      originalColors={true}
-      tileSize={280}
-      logoScale={0.72}
-      finalScale={0.92}
-      loop={false}
-      speed={1.0}
-      tuning={{
-        present: 2.2, // 2.2s + 1.1s TAIL = 3.3 segundos exactos
-        startZoom: 2.2,
-        dispersion: 1.2,
-        colorBleed: 0.7,
-        sheen: 1.2,
-        specular: 1.3,
-        shadow: 0,
-        halo: 0,
-        ripple: 0,
-        ...tuning,
-      }}
-      {...props}
-    />
-  )
-}
+export const GlassRevealCai = GlassReveal21st
 
 export function GlassReveal21stDemo() {
   return <GlassReveal21st className="h-svh min-h-[420px] w-full" />
 }
 
-export default GlassIconReveal
+export default GlassReveal21st
