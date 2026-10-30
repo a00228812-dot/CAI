@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { CloudShader } from "@/components/ui/cloud-shader";
 import Cloudscape from "@/components/ui/cloudscape";
 import DiscCascadeCarousel, { DiscCascadeItem } from "@/components/ui/disc-cascade-carousel";
+import VideoPlayer from "@/components/ui/video-player";
 import ProceduralGroundBackground from "@/components/ui/procedural-ground-background";
 const nubesVideoSrc = "/NUBES.mp4";
 import {
@@ -32,6 +33,7 @@ export interface TalkVideo {
   quote: string;
   synopsis: string;
   thumbnail: string;
+  videoUrl?: string;
 }
 
 const TALKS_DATA: TalkVideo[] = [
@@ -1142,97 +1144,50 @@ export function App() {
       ===================================================================== */}
       {selectedTalk && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-black/80 backdrop-blur-2xl"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8 bg-black/85 backdrop-blur-2xl"
           onClick={() => setSelectedTalk(null)}
         >
           <div
-            className="relative w-full max-w-5xl text-white"
+            className="relative w-full max-w-4xl text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
               <div>
-                <span className="text-xs uppercase tracking-[0.3em] text-[#5cb3ff] block">
+                <span className="text-xs uppercase tracking-[0.3em] text-[#5cb3ff] block font-medium">
                   {selectedTalk.category} • {selectedTalk.duration}
                 </span>
-                <h3 className="font-serif text-2xl sm:text-4xl text-white font-normal mt-1">
+                <h3 className="font-serif text-xl sm:text-3xl text-white font-normal mt-1 leading-snug">
                   {selectedTalk.title}
                 </h3>
+                <p className="text-xs text-white/60 font-light mt-0.5">
+                  {selectedTalk.speaker} — {selectedTalk.role}
+                </p>
               </div>
               <button
                 onClick={() => setSelectedTalk(null)}
-                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                className="p-2.5 sm:p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
                 aria-label="Cerrar reproductor"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black/90 shadow-[0_30px_100px_rgba(0,0,0,0.9)]">
-              <img
-                src={selectedTalk.thumbnail}
-                alt={selectedTalk.title}
-                className={`absolute inset-0 w-full h-full object-cover transition-all duration-700 ${isPlayingVideo ? "scale-105 opacity-35 blur-sm" : "opacity-65"
-                  }`}
+            {/* Componente VideoPlayer con controles y salto +-15s */}
+            <div className="w-full">
+              <VideoPlayer
+                src={selectedTalk.videoUrl || "https://videos.pexels.com/video-files/30333849/13003128_2560_1440_25fps.mp4"}
+                poster={selectedTalk.thumbnail}
+                autoPlay={true}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/40" />
-
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                <button
-                  onClick={() => setIsPlayingVideo(!isPlayingVideo)}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#5cb3ff]/90 hover:bg-white text-[#001d34] flex items-center justify-center transition-all hover:scale-105 shadow-[0_0_50px_rgba(92,179,255,0.6)]"
-                >
-                  {isPlayingVideo ? (
-                    <Pause className="w-8 h-8 fill-current" />
-                  ) : (
-                    <Play className="w-8 h-8 fill-current ml-1" />
-                  )}
-                </button>
-
-                <p className="mt-5 text-xs sm:text-sm uppercase tracking-[0.25em] text-white/90">
-                  {isPlayingVideo
-                    ? "Espacio reservado para el video de la charla (Reproducción simulada)"
-                    : "Haz clic para reproducir la charla de concientización"}
-                </p>
-                <p className="mt-1 text-xs text-white/60 max-w-md font-light">
-                  {selectedTalk.speaker} — {selectedTalk.role}
-                </p>
-              </div>
-
-              <div className="absolute bottom-0 inset-x-0 p-6 flex flex-col gap-2">
-                <div
-                  className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden cursor-pointer"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const pct = Math.max(
-                      0,
-                      Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
-                    );
-                    setVideoProgress(pct);
-                  }}
-                >
-                  <div
-                    className="h-full bg-[#5cb3ff] transition-all"
-                    style={{ width: `${videoProgress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] font-mono text-white/70">
-                  <span>
-                    {isPlayingVideo
-                      ? "REPRODUCIENDO • ESPACIO DE VIDEO CAI"
-                      : "PAUSADO"}
-                  </span>
-                  <span>{selectedTalk.duration}</span>
-                </div>
-              </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            <div className="mt-4 sm:mt-5 grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-5 items-start">
               <div className="md:col-span-7">
-                <p className="font-serif italic text-lg sm:text-xl text-white/95 leading-relaxed">
+                <p className="font-serif italic text-sm sm:text-base text-white/95 leading-relaxed">
                   {selectedTalk.quote}
                 </p>
               </div>
-              <div className="md:col-span-5 text-sm text-white/75 font-light leading-relaxed">
+              <div className="md:col-span-5 text-xs sm:text-sm text-white/70 font-light leading-relaxed">
                 {selectedTalk.synopsis}
               </div>
             </div>
