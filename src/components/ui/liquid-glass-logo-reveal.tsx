@@ -516,6 +516,12 @@ void main() {
   bg = mix(bg, haloCol, clamp(uHalo * (0.30 * exp(-outside / (0.025 * uPlateScale)) + 0.07 * exp(-outside / (0.12 * uPlateScale))), 0.0, 1.0) * step(0.0, sd));
 
   vec3 col = bg;
+  float fres = 0.0;
+  float spc = 0.0;
+  vec3 rimCol = vec3(1.0);
+  vec3 logoRefracted = lg.rgb;
+  float logoAlphaRefracted = lg.a;
+
   float soft = px + uBlur * 0.8 + 0.06 * uDissolve * (1.0 - uKeep) * uPlateScale;
   if (sd < soft) {
     // Lighting surface: a superellipse quarter, flat toward the face and steep at the rim.
@@ -560,8 +566,13 @@ void main() {
       vec3 w = spectrum(lam);
       acc += mix(back, l.rgb, l.a) * w;
       wsum += w;
+      logoAcc += l.rgb * l.a * w;
+      logoAlphaAcc += l.a * ((w.r + w.g + w.b) / 3.0);
     }
     vec3 trans = acc / wsum;
+    logoRefracted = logoAcc / max(wsum, vec3(1e-5));
+    logoAlphaRefracted = clamp(logoAlphaAcc / 20.0, 0.0, 1.0);
+
     float tl = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     trans = clamp(tl + (trans - tl) * (1.0 + uVivid * uOptics), 0.0, 1.0);
     // A young droplet is milky; the haze only ever lightens.
@@ -571,7 +582,6 @@ void main() {
 
     float glassAmt = pow(1.0 - uDissolve, 1.5);
     float lit = uSpec * glassAmt;
-    // rimCol initialized above
 
     // Light backdrop: the thick edge glows softly white over a clear face, with a hairline that is
     // bright along the top and right and a thin dark silhouette down the left and bottom.
@@ -595,6 +605,7 @@ void main() {
     vec2 ldir = rot(normalize(vec2(-0.62, 0.78)), uLightAng);
     float side = dot(nOut, ldir);
     fres = pow(edge, 1.5);
+    rimCol = mix(vec3(0.9, 0.95, 1.0), vec3(1.0), uLightGlass);
     vec3 rim = rimCol * fres * (0.35 + 0.65 * max(side, -side * 0.8)) * uRim * 0.65;
     vec3 Hv = normalize(normalize(vec3(-0.45, 0.6, 0.66)) + vec3(0.0, 0.0, 1.0));
     spc = pow(max(dot(Nl, Hv), 0.0), 140.0) * 0.8 * smoothstep(0.0, 0.25, y1);
@@ -619,19 +630,16 @@ void main() {
     float sheen = uSheen * glassAmt * exp(-sweepD * sweepD / 0.03) * (0.55 + 0.45 * (1.0 - x));
     float edgeLine = gauss(s, 0.005 * uPlateScale, 0.0045 * uPlateScale);
 
-    // Reflexiones de luz cristalinas sobre el vidrio líquido (sin fondo azul ni negro):
-    // El borde curvo (Fresnel), el punto especular brillante, el perfil biselado y la banda de brillo
-    vec3 glassReflections = (rimCol * fres * 0.95 + vec3(spc * 1.4) + vec3(edgeLine * 0.8)) * lit + vec3(sheen * 0.9);
-    float reflAlpha = clamp((fres * 0.85 + spc * 1.6 + edgeLine * 0.9 + sheen * 0.95) * lit, 0.0, 1.0) * cov;
+    // Destellos y reflejos cristalinos del vidrio (100% transparentes sobre el video de nubes):
+    vec3 glassReflections = (rimCol * (fres * 1.2 + edgeLine * 0.8) + vec3(spc * 1.6)) * lit + vec3(sheen * 0.85);
+    float reflAlpha = clamp((fres * 0.95 + spc * 1.4 + edgeLine * 0.85 + sheen * 0.8) * lit, 0.0, 1.0) * cov;
 
-    // Logo refractado nítido con sus colores originales (sin mezclar con fondos oscuros)
+    // Logo CAI nítido refractado con sus colores puros:
     float logoA = mix(lg.a * uBare, logoAlphaRefracted, uPlateAlpha);
     vec3 logoC = mix(lg.rgb, logoRefracted, uPlateAlpha);
 
-    // Color del píxel: logo puro + destellos de luz pura del vidrio
+    // Color final y transparencia:
     vec3 crystalCol = logoC + glassReflections;
-
-    // Alpha transparente: visible únicamente donde esté el logo o donde brille el relieve del vidrio
     float totalAlpha = clamp(logoA + reflAlpha, 0.0, 1.0);
     outColor = vec4(crystalCol, totalAlpha);
   } else {
@@ -1204,10 +1212,10 @@ export function GlassRevealCai({ tuning, transparent = true, ...props }: GlassRe
     <GlassIconReveal
       logo="/CAI_LOGO.png"
       label="Centro de Atención Integral CAI"
-      look="dark"
+      look="light"
       transparent={transparent}
       background="transparent"
-      plateColor="transparent"
+      plateColor="#ffffff"
       iconPlate={false}
       keepPlate={false}
       originalColors={true}
