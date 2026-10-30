@@ -705,7 +705,8 @@ export function App() {
       ===================================================================== */}
       {showIntroReveal && (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-700 ease-out select-none ${
+          className={`fixed inset-0 z-30 pointer-events-none flex items-center justify-center transition-opacity duration-700 ease-out select-none ${
+
             introRevealed ? "opacity-0 pointer-events-none" : "opacity-100"
           }`}
           style={{ willChange: "opacity" }}

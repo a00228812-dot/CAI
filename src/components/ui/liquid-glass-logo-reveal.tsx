@@ -63,6 +63,7 @@ export interface Settings extends GlassTuning {
   iconPlate: boolean
   keepPlate: boolean
   originalColors: boolean
+  transparent: boolean
   background: string
   plateColor: string
   logoColor: string
@@ -77,6 +78,7 @@ const LIGHT: Settings = {
   iconPlate: false,
   keepPlate: false,
   originalColors: false,
+  transparent: false,
   opticalDepth: 1.1,
   dispersion: 1.7,
   colorBleed: 1.25,
@@ -108,7 +110,7 @@ const LIGHT: Settings = {
   hold: 1,
   background: "#e9e9eb",
   plateColor: "#ffffff",
-  logoColor: "#0e1428",
+  logoColor: "#ffffff",
 }
 
 export const LOOKS: Record<Look, Settings> = {
@@ -374,6 +376,7 @@ uniform float uGlow;       // colour bleed in the rim, plate units on screen
 uniform float uFaceDisp;   // lateral colour across the face
 uniform float uVivid;      // chroma lift of the dispersed light
 
+uniform float uTransparent;
 uniform float uDisp;
 uniform float uDouble;
 uniform float uBevelW;
@@ -606,9 +609,23 @@ void main() {
     col = mix(bg, glass, cov);
   }
 
-  vec3 outc = mix(plain, col, uPlateAlpha);
-  outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-  outColor = vec4(outc, 1.0);
+  if (uTransparent > 0.5) {
+    float cov = clamp(0.5 - sd / soft, 0.0, 1.0);
+    float logoA = lg.a * uBare;
+    // Inside the glass plate, calculate glass alpha with specular & sheen
+    float glassAmt = pow(1.0 - uDissolve, 1.5);
+    float lit = uSpec * glassAmt;
+    float sweepD = dot(p / uPlateScale, normalize(vec2(0.8, 0.6))) - uSweep;
+    float sheen = uSheen * glassAmt * exp(-sweepD * sweepD / 0.03) * (0.55 + 0.45 * (1.0 - x));
+    float glassAlpha = clamp(cov * (0.35 + 0.65 * clamp(lit + sheen, 0.0, 1.0)), 0.0, 1.0);
+    float alpha = clamp(mix(logoA, max(logoA, glassAlpha), uPlateAlpha), 0.0, 1.0);
+    vec3 outc = mix(lg.rgb, col, uPlateAlpha);
+    outColor = vec4(outc, alpha);
+  } else {
+    vec3 outc = mix(plain, col, uPlateAlpha);
+    outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+    outColor = vec4(outc, 1.0);
+  }
 }`
 
 /* ------------------------------------------------------------------ *
@@ -617,7 +634,7 @@ void main() {
 type Frame = ReturnType<typeof frameAt>
 
 function createRenderer(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false })
+  const gl = canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: false, alpha: true })
   if (!gl) return null
   const compile = (type: number, src: string) => {
     const sh = gl.createShader(type)!
@@ -683,6 +700,7 @@ function createRenderer(canvas: HTMLCanvasElement) {
     gl!.uniform1f(U.uTile, tilePx)
     gl!.uniform1f(U.uTexSize, TEX)
     gl!.uniform1f(U.uBoxFrac, BOX)
+    if (U.uTransparent) gl!.uniform1f(U.uTransparent, fr.uTransparent)
     for (const k in fr) {
       const v = fr[k as keyof Frame]
       if (typeof v === "number" && U[k]) gl!.uniform1f(U[k], v)
@@ -776,6 +794,7 @@ function frameAt(T: number, P: Settings, outro = 0) {
   const bg = hexToRgb(P.background)
 
   return {
+    uTransparent: P.transparent ? 1.0 : 0.0,
     uPlateScale: plateScale,
     uShapeN: mixVal(2, P.corner, morph),
     uCornerN: P.corner,
@@ -848,6 +867,8 @@ export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivE
   keepPlate?: boolean
   /** Keep the logo's own colours instead of `logoColor` */
   originalColors?: boolean
+  /** Render with transparent background (no solid background block) */
+  transparent?: boolean
   /** Largest tile size in px; it shrinks to fit the container */
   tileSize?: number
   /** Logo half size relative to the tile's half size */
@@ -876,6 +897,7 @@ export function GlassIconReveal({
   iconPlate,
   keepPlate,
   originalColors,
+  transparent = false,
   tileSize,
   logoScale,
   finalScale,
@@ -898,11 +920,11 @@ export function GlassIconReveal({
   const tuningKey = JSON.stringify(tuning ?? {})
   const offsetKey = logoOffset ? logoOffset.join(",") : ""
   const settings = React.useMemo<Settings>(() => {
-    const own = { background, logoColor, plateColor, iconPlate, keepPlate, originalColors, tileSize, logoScale, finalScale, hold }
+    const own = { background, logoColor, plateColor, iconPlate, keepPlate, originalColors, transparent, tileSize, logoScale, finalScale, hold }
     const set: Partial<Settings> = Object.fromEntries(Object.entries(own).filter(([, v]) => v !== undefined))
     if (offsetKey) set.logoOffset = offsetKey.split(",").map(Number) as [number, number]
     return { ...LOOKS[look], ...set, ...(JSON.parse(tuningKey) as Partial<GlassTuning>) }
-  }, [look, background, logoColor, plateColor, iconPlate, keepPlate, originalColors, tileSize, logoScale, finalScale, hold, offsetKey, tuningKey])
+  }, [look, background, logoColor, plateColor, iconPlate, keepPlate, originalColors, transparent, tileSize, logoScale, finalScale, hold, offsetKey, tuningKey])
 
   const live = React.useRef({ settings, loop, speed, time })
   live.current = { settings, loop, speed, time }
@@ -948,7 +970,7 @@ export function GlassIconReveal({
       role="img"
       aria-label={label}
       className={cn("relative isolate cursor-pointer overflow-hidden select-none", className)}
-      style={{ backgroundColor: settings.background, ...style }}
+      style={{ backgroundColor: settings.transparent ? "transparent" : settings.background, ...style }}
       onClick={(e) => {
         engineRef.current?.replay()
         onClick?.(e)
@@ -1164,13 +1186,14 @@ export function GlassReveal21st({ tuning, ...props }: GlassReveal21stProps) {
 export type GlassRevealCaiProps = Omit<GlassIconRevealProps, "logo">
 
 /** Preset para el logo oficial de CAI con animación de 3.3s exactos */
-export function GlassRevealCai({ tuning, ...props }: GlassRevealCaiProps) {
+export function GlassRevealCai({ tuning, transparent = true, ...props }: GlassRevealCaiProps & { transparent?: boolean }) {
   return (
     <GlassIconReveal
       logo="/CAI_LOGO.png"
       label="Centro de Atención Integral CAI"
       look="dark"
-      background="#000000"
+      transparent={transparent}
+      background="transparent"
       plateColor="#060b18"
       originalColors={true}
       tileSize={280}
