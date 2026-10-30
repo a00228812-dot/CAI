@@ -485,7 +485,7 @@ export function App() {
       }
 
       if (cornerFrameRef.current) {
-        const frameOpacity = Math.max(0, dayOpacity);
+        const frameOpacity = 1;
         cornerFrameRef.current.style.pointerEvents =
           frameOpacity > 0.05 ? "auto" : "none";
         cornerFrameRef.current.style.opacity = frameOpacity.toFixed(3);
