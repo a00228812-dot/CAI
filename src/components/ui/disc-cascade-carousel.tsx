@@ -476,7 +476,24 @@ function Art({ pattern, pal, seed, uid }: { pattern: DiscPattern; pal: [string, 
   return <>{out}</>
 }
 
-function Print({ item, i, uid, mark, ink, halo }: { item: DiscCascadeItem; i: number; uid: string; mark: string; ink: string; halo: string }) {
+function Print({
+  item,
+  i,
+  uid,
+  mark,
+  ink,
+  halo,
+  isActive = true,
+}: {
+  item: DiscCascadeItem
+  i: number
+  uid: string
+  mark: string
+  ink: string
+  halo: string
+  isActive?: boolean
+}) {
+  if (!isActive) return null
   const label = (item.label ?? item.title).toUpperCase()
   const fine =
     (item.fine ??
@@ -1088,7 +1105,7 @@ export function DiscCascadeCarousel({
                           <Art pattern={item.pattern ?? PATTERNS[i % PATTERNS.length]} pal={pal} seed={i + 1} uid={id} />
                         </svg>
                       )}
-                      <Print item={item} i={i} uid={id} mark={brand} ink={ink} halo={item.src ? "rgba(0,0,0,.45)" : pal[0]} />
+                      <Print item={item} i={i} uid={id} mark={brand} ink={ink} halo={item.src ? "rgba(0,0,0,.45)" : pal[0]} isActive={isActive} />
                     </span>
                   </span>
                   <Hub uid={id} />
