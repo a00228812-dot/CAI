@@ -705,8 +705,8 @@ export function App() {
           INTRO LOGO REVEAL (EN EL MEDIO, EXACTAMENTE 3.3 SEGUNDOS)
       ===================================================================== */}
       {showIntroReveal && (
-        <div className="fixed inset-0 z-[9999]">
-          <GlassReveal21st className="h-svh min-h-[420px] w-full" />
+        <div className="fixed inset-0 z-[9999] pointer-events-none">
+          <GlassReveal21st className="h-svh min-h-[420px] w-full pointer-events-none" />
         </div>
       )}
 

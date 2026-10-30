@@ -78,7 +78,7 @@ const LIGHT: Settings = {
   specular: 1, halo: 0, shadow: 1, ripple: 1,
   bounce: 0, response: 0.42, startSize: 0.2, startZoom: 2.6, glide: 2.1, present: 2.2, drift: 0.12, swell: 0.5, focus: 1,
   sheen: 1, lightTurn: 0.9,
-  hold: 1, background: "#e9e9eb", plateColor: "#ffffff", logoColor: "#0e1428",
+  hold: 1, background: "#e9e9ebff", plateColor: "#ffffff", logoColor: "#0e1428",
 }
 
 const LOOKS: Record<Look, Settings> = {
@@ -477,7 +477,7 @@ void main() {
     float cornerW = smoothstep(0.1, 0.9, 4.0 * nOut.x * nOut.x * nOut.y * nOut.y);
     float streak = 0.35 * uStreak * bw * mix(0.15, 1.0, cornerW) * pow(1.0 - xf, 1.5) * uOptics;
     vec2 tangent = vec2(-nOut.y, nOut.x);
-    vec3 acc = vec3(0.0), wsum = vec3(0.0);
+    vec3 acc = vec3(0.0), wsum = vec3(0.0), aacc = vec3(0.0);
     for (int i = 0; i < 20; i++) {
       float lam = (float(i) + 0.5) / 20.0;
       float c = uDisp * (1.0 - 2.0 * lam);
@@ -493,9 +493,12 @@ void main() {
       vec4 l = logoAt(sp, rblur + 0.12 * streak + uFaceDisp * 0.5 * max(c, 0.0) * faceOnly, foot);
       vec3 w = spectrum(lam);
       acc += mix(back, l.rgb, l.a) * w;
+      aacc += l.a * w;
       wsum += w;
     }
-    vec3 trans = acc / wsum;
+    vec3 A = aacc / wsum;
+    float logoA = clamp(max(A.r, max(A.g, A.b)), 0.0, 1.0);
+    vec3 trans = logoA > 1e-4 ? clamp((acc / wsum - (1.0 - logoA) * back) / logoA, 0.0, 1.0) : back;
     float tl = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     trans = clamp(tl + (trans - tl) * (1.0 + uVivid * uOptics), 0.0, 1.0);
     // A young droplet is milky; the haze only ever lightens.
@@ -542,12 +545,23 @@ void main() {
     glass = mix(glass, vec3(1.0), sheen * mix(0.22, 0.42, uLightGlass));
 
     float cov = clamp(0.5 - sd / soft, 0.0, 1.0);
-    col = mix(bg, glass, cov);
+    float rimGlow = mix(0.32 * tileBand, 0.75 * dropBand, uDrop) * glassAmt;
+    float edgeSpec = (0.28 * hw * edgeLine + 0.22 * (0.4 + 0.6 * hw) * lip) * lit + 0.55 * uDrop * glassAmt * edgeLine;
+    float sheenA = sheen * mix(0.22, 0.42, uLightGlass);
+    float frostA = uFrost * 0.3 * glassAmt;
+    float glassHighA = clamp(rimGlow + edgeSpec + sheenA + frostA, 0.0, 1.0);
+    float tileA = cov * clamp(logoA + glassHighA * (1.0 - logoA), 0.0, 1.0);
+    vec3 tileCol = mix(vec3(1.0), glass, clamp(logoA / max(logoA + glassHighA * (1.0 - logoA), 1e-4), 0.0, 1.0));
+    float bareA = lg.a * uBare;
+    float outA = mix(bareA, tileA, uPlateAlpha);
+    vec3 outc = outA > 1e-4 ? mix(lg.rgb * bareA, tileCol * tileA, uPlateAlpha) / outA : vec3(0.0);
+    outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+    outColor = vec4(outc, outA);
+    return;
   }
 
-  vec3 outc = mix(plain, col, uPlateAlpha);
-  outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-  outColor = vec4(outc, 1.0);
+  float bareA = lg.a * uBare * (1.0 - uPlateAlpha);
+  outColor = vec4(lg.rgb, bareA);
 }`
 
 /* ------------------------------------------------------------------ *
@@ -618,6 +632,8 @@ function createRenderer(canvas: HTMLCanvasElement) {
   function render(fr: Frame, w: number, h: number, tilePx: number) {
     if (!hasLogo) return
     gl!.viewport(0, 0, w, h)
+    gl!.clearColor(0, 0, 0, 0)
+    gl!.clear(gl!.COLOR_BUFFER_BIT)
     gl!.uniform2f(U.uCenter, w / 2, h / 2)
     gl!.uniform1f(U.uTile, tilePx)
     gl!.uniform1f(U.uTexSize, TEX)
@@ -896,7 +912,7 @@ function GlassIconReveal({
       role="img"
       aria-label={label}
       className={cn("relative isolate cursor-pointer overflow-hidden select-none", className)}
-      style={{ backgroundColor: settings.background, ...style }}
+      style={{ backgroundColor: "transparent", ...style }}
       onClick={(e) => {
         engineRef.current?.replay()
         onClick?.(e)
