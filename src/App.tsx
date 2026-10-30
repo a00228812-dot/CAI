@@ -3,7 +3,7 @@ import { CloudShader } from "@/components/ui/cloud-shader";
 import Cloudscape from "@/components/ui/cloudscape";
 import DiscCascadeCarousel, { DiscCascadeItem } from "@/components/ui/disc-cascade-carousel";
 import VideoPlayer from "@/components/ui/video-player";
-import CaiGlassReveal from "@/components/ui/liquid-glass-logo-reveal";
+import { GlassRevealCai } from "@/components/ui/liquid-glass-logo-reveal";
 import ProceduralGroundBackground from "@/components/ui/procedural-ground-background";
 const nubesVideoSrc = "/NUBES.mp4";
 import {
@@ -348,9 +348,9 @@ const ScrollTrailingDots: React.FC<{ totalDots?: number }> = ({
 export function App() {
   // Estado que controla la aparición de toda la interfaz exactamente a los 4.0 segundos
   // mientras las nubes del video NUBES.mp4 se abren dejando el cielo azul en medio
+  // Intro Logo Reveal: activo en el medio exactamente durante 3.3 segundos
+  const [showIntroReveal, setShowIntroReveal] = useState(true);
   const [introRevealed, setIntroRevealed] = useState(false);
-  const [showLogoIntro, setShowLogoIntro] = useState(true);
-  const [logoFadeOut, setLogoFadeOut] = useState(false);
 
   // Referencias para el movimiento fluido del cielo, el video NUBES.mp4 y las capas de nubes cercanas
   const daySkyContainerRef = useRef<HTMLDivElement>(null);
@@ -401,9 +401,9 @@ export function App() {
     }, 4000);
   };
 
-  // Temporizador exacto al iniciar la página:
-  // Durante los primeros 3.5 segundos se reproduce el Logo Reveal de CAI en el centro sobre el video NUBES.mp4.
-  // A los 3.5s exactos se desvanece con fade out suave y se revela la interfaz.
+  // Temporizador exacto de 4.0 segundos al iniciar la página:
+  // Durante los primeros 4 segundos solo se ve NUBES.mp4 abriéndose; a los 4s aparece todo de blur a enfoque.
+  // Además forzamos scroll arriba (0,0) y bloqueamos cualquier restauración automática de scroll del navegador.
   useEffect(() => {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
@@ -411,22 +411,19 @@ export function App() {
     window.scrollTo(0, 0);
     document.documentElement.style.overflow = "hidden";
 
-    // 1. A los 3.3 segundos exactos: fade out del Logo Reveal y revelado de la interfaz
-    const timerIntro = window.setTimeout(() => {
+    const revealTimer = window.setTimeout(() => {
       window.scrollTo(0, 0);
-      setLogoFadeOut(true);
       setIntroRevealed(true);
       document.documentElement.style.overflow = "";
     }, 3300);
 
-    // 2. A los 4.8 segundos: desmontar el componente del logo tras terminar el fade out
-    const timerCleanup = window.setTimeout(() => {
-      setShowLogoIntro(false);
-    }, 4800);
+    const cleanupTimer = window.setTimeout(() => {
+      setShowIntroReveal(false);
+    }, 4100);
 
     return () => {
-      window.clearTimeout(timerIntro);
-      window.clearTimeout(timerCleanup);
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(cleanupTimer);
       document.documentElement.style.overflow = "";
     };
   }, []);
@@ -619,22 +616,6 @@ export function App() {
   return (
     <div className="relative min-h-screen w-full text-white selection:bg-[#f4eec7] selection:text-[#0d2b4e]">
       {/* =====================================================================
-          INTRO LOGO REVEAL (CAI_LOGO.png)
-          Aparece en el centro al cargar la página durante exactamente 3.5 segundos
-          y después se desvanece con fade out suave.
-      ===================================================================== */}
-      {showLogoIntro && (
-        <div
-          className={`fixed inset-0 z-40 flex items-center justify-center pointer-events-none transition-opacity duration-1000 ease-out ${
-            logoFadeOut ? "opacity-0" : "opacity-100"
-          }`}
-          style={{ willChange: "opacity" }}
-        >
-          <CaiGlassReveal className="w-full h-full pointer-events-none" />
-        </div>
-      )}
-
-      {/* =====================================================================
           BACKGROUND LAYER 1: "EL CASO TRISTE" (NUBES DE NOCHE / PROCEDURAL GROUND)
           Usado TAL CUAL está en RESOURCES.TXT (fixed inset-0 -z-10)
           + Capa de blur transparente (sin oscurecer el fondo) para suavizar los polígonos
@@ -719,6 +700,22 @@ export function App() {
           MARCO EDITORIAL EN LAS 4 ESQUINAS (ESTILO DE LAS IMÁGENES ENVIADAS)
           Fuera del contenedor con filter/transform para que position: fixed siempre se ancle al viewport real
       ===================================================================== */}
+      {/* =====================================================================
+          INTRO LOGO REVEAL (EN EL MEDIO, EXACTAMENTE 3.3 SEGUNDOS)
+      ===================================================================== */}
+      {showIntroReveal && (
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-black transition-opacity duration-700 ease-out select-none ${
+            introRevealed ? "opacity-0 pointer-events-none" : "opacity-100"
+          }`}
+          style={{ willChange: "opacity" }}
+        >
+          <div className="relative w-full h-full flex items-center justify-center">
+            <GlassRevealCai className="w-full h-full" />
+          </div>
+        </div>
+      )}
+
       <div
         ref={cornerFrameRef}
         className="fixed inset-0 pointer-events-none z-40 overflow-hidden"

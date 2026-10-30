@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils"
 /*
  * 21st.dev Glass Reveal: the mark lingers big against the rim of a clear glass tile, the
  * glass bends it into colour at the corners, then lets go and leaves the mark.
- * Self-contained: one WebGL2 pass, no dependencies.
- * Shader and spring timeline ported from zanwei/glass-icon-reveal (MIT).
+ * Self-contained: the reveal engine is inlined below. One WebGL2 pass, no dependencies.
+ * Shader and spring timeline ported from zanwei/glass-icon-reveal (MIT):
+ * https://github.com/zanwei/glass-icon-reveal
  */
 
 export type Look = "light" | "dark"
@@ -69,23 +70,72 @@ export interface Settings extends GlassTuning {
 }
 
 const LIGHT: Settings = {
-  tileSize: 256, logoScale: 0.7, finalScale: 0.69, logoOffset: [0, 0], iconPlate: false, keepPlate: false, originalColors: false,
-  opticalDepth: 1.1, dispersion: 1.7, colorBleed: 1.25, doubleBevel: 1, bevelWidth: 0.14, corner: 4.8,
-  cornerPull: 2.1, cornerWidth: 2.2, cornerFocus: 0.58, edgeSmear: 2.85, stretch: 0, tilt: 0.35, bulge: 1,
-  specular: 1, halo: 0, shadow: 1, ripple: 1,
-  bounce: 0, response: 0.42, startSize: 0.2, startZoom: 2.6, glide: 2.3, present: 2.4, drift: 0.12, swell: 0.5, focus: 1,
-  sheen: 1, lightTurn: 0.9,
-  hold: 1, background: "#e9e9eb", plateColor: "#ffffff", logoColor: "#0e1428",
+  tileSize: 256,
+  logoScale: 0.7,
+  finalScale: 0.69,
+  logoOffset: [0, 0],
+  iconPlate: false,
+  keepPlate: false,
+  originalColors: false,
+  opticalDepth: 1.1,
+  dispersion: 1.7,
+  colorBleed: 1.25,
+  doubleBevel: 1,
+  bevelWidth: 0.14,
+  corner: 4.8,
+  cornerPull: 2.1,
+  cornerWidth: 2.2,
+  cornerFocus: 0.58,
+  edgeSmear: 2.85,
+  stretch: 0,
+  tilt: 0.35,
+  bulge: 1,
+  specular: 1,
+  halo: 0,
+  shadow: 1,
+  ripple: 1,
+  bounce: 0,
+  response: 0.42,
+  startSize: 0.2,
+  startZoom: 2.6,
+  glide: 2.3,
+  present: 2.4,
+  drift: 0.12,
+  swell: 0.5,
+  focus: 1,
+  sheen: 1,
+  lightTurn: 0.9,
+  hold: 1,
+  background: "#e9e9eb",
+  plateColor: "#ffffff",
+  logoColor: "#0e1428",
 }
 
-const LOOKS: Record<Look, Settings> = {
+export const LOOKS: Record<Look, Settings> = {
   light: LIGHT,
   dark: {
-    ...LIGHT, logoScale: 0.72, finalScale: 1, iconPlate: true,
-    halo: 1, shadow: 0, ripple: 0.5, startZoom: 1.6, drift: 0.05,
-    opticalDepth: 0.75, bevelWidth: 0.22, dispersion: 0.9,
-    colorBleed: 0.45, corner: 5, cornerPull: 1.4, edgeSmear: 1.2, tilt: 0, cornerWidth: 1.2, cornerFocus: 0.4,
-    background: "#020611", plateColor: "#081426", logoColor: "#ffffff",
+    ...LIGHT,
+    logoScale: 0.72,
+    finalScale: 1,
+    iconPlate: true,
+    halo: 1,
+    shadow: 0,
+    ripple: 0.5,
+    startZoom: 1.6,
+    drift: 0.05,
+    opticalDepth: 0.75,
+    bevelWidth: 0.22,
+    dispersion: 0.9,
+    colorBleed: 0.45,
+    corner: 5,
+    cornerPull: 1.4,
+    edgeSmear: 1.2,
+    tilt: 0,
+    cornerWidth: 1.2,
+    cornerFocus: 0.4,
+    background: "#000000",
+    plateColor: "#05070b",
+    logoColor: "#ffffff",
   },
 }
 
@@ -95,7 +145,7 @@ const LOOKS: Record<Look, Settings> = {
 const TEX = 1024 // logo texture size
 const BOX = 0.75 // share of the texture the logo fills (the rest is room for the SDF)
 
-interface LogoData {
+export interface LogoData {
   canvas: HTMLCanvasElement
   sdf: Float32Array
 }
@@ -103,9 +153,11 @@ interface LogoData {
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image()
-    if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
+    if (!src.startsWith("data:") && typeof window !== "undefined" && src.startsWith("http") && !src.startsWith(window.location.origin)) {
+      img.crossOrigin = "anonymous"
+    }
     img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error("GlassIconReveal: the logo could not be loaded"))
+    img.onerror = () => reject(new Error("GlassIconReveal: the logo could not be loaded: " + src))
     img.src = src
   })
 }
@@ -133,6 +185,7 @@ function svgToUrl(text: string) {
 const logoUrl = (logo: string) => (isMarkup(logo) ? svgToUrl(logo) : logo)
 
 // Draws the source into a TEX×TEX canvas, cropped to its visible pixels and fitted into the logo box.
+// Opaque images (JPG, flat PNG) get their corner colour keyed out so the mark becomes the shape.
 function fitToTexture(source: CanvasImageSource, sw: number, sh: number) {
   const tmp = document.createElement("canvas")
   tmp.width = tmp.height = TEX
@@ -144,12 +197,20 @@ function fitToTexture(source: CanvasImageSource, sw: number, sh: number) {
   const d = tc.getImageData(0, 0, TEX, TEX).data
 
   let opaque = true
-  for (let i = 3; i < d.length; i += 4 * 97) if (d[i] < 250) { opaque = false; break }
+  for (let i = 3; i < d.length; i += 4 * 97) {
+    if (d[i] < 250) {
+      opaque = false
+      break
+    }
+  }
   const key = [d[0], d[1], d[2]]
   const keyAlpha = (r: number, g: number, b: number) =>
     Math.min(1, Math.max(0, (Math.hypot(r - key[0], g - key[1], b - key[2]) / 441 - 0.08) / 0.2))
 
-  let x0 = TEX, y0 = TEX, x1 = -1, y1 = -1
+  let x0 = TEX,
+    y0 = TEX,
+    x1 = -1,
+    y1 = -1
   for (let y = 0; y < TEX; y++) {
     for (let x = 0; x < TEX; x++) {
       const i = (y * TEX + x) * 4
@@ -181,7 +242,7 @@ function fitToTexture(source: CanvasImageSource, sw: number, sh: number) {
   return out
 }
 
-// Signed distance field from alpha: + outside, − inside, in texture units.
+// Signed distance field from alpha (TinySDF method): + outside, − inside, in texture units.
 function buildSdf(canvas: HTMLCanvasElement) {
   const n = TEX * TEX
   const alpha = canvas.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, TEX, TEX).data
@@ -190,9 +251,13 @@ function buildSdf(canvas: HTMLCanvasElement) {
   const inner = new Float64Array(n)
   for (let i = 0; i < n; i++) {
     const a = alpha[i * 4 + 3] / 255
-    if (a >= 1) { outer[i] = 0; inner[i] = INF }
-    else if (a <= 0) { outer[i] = INF; inner[i] = 0 }
-    else {
+    if (a >= 1) {
+      outer[i] = 0
+      inner[i] = INF
+    } else if (a <= 0) {
+      outer[i] = INF
+      inner[i] = 0
+    } else {
       const dd = 0.5 - a
       outer[i] = dd > 0 ? dd * dd : 0
       inner[i] = dd < 0 ? dd * dd : 0
@@ -238,10 +303,10 @@ function edt1d(grid: Float64Array, offset: number, stride: number, f: Float64Arr
   }
 }
 
-// One SDF per logo for the whole page
+// One SDF per logo for the whole page: building it takes ~40-100 ms, remounts and twins reuse it.
 const logoCache = new Map<string, Promise<LogoData>>()
 
-function loadLogo(logo: string) {
+export function loadLogo(logo: string) {
   let job = logoCache.get(logo)
   if (!job) {
     job = loadImage(logoUrl(logo)).then((img) => {
@@ -265,49 +330,49 @@ const FRAG = `#version 300 es
 precision highp float;
 out vec4 outColor;
 
-uniform vec2 uCenter;
-uniform float uTile;
-uniform sampler2D uSdf;
-uniform sampler2D uCol;
+uniform vec2 uCenter;      // device px, GL coords
+uniform float uTile;       // tile size, device px
+uniform sampler2D uSdf;    // signed distance, texture units, + outside
+uniform sampler2D uCol;    // premultiplied colour, mipmapped
 uniform float uTexSize;
 uniform float uBoxFrac;
 
-uniform float uPlateScale;
-uniform float uShapeN;
-uniform float uCornerN;
-uniform float uOptics;
-uniform float uPlateAlpha;
-uniform float uLogoHalf;
-uniform vec2 uLogoOff;
-uniform float uBold;
-uniform float uBlur;
-uniform float uFrost;
-uniform float uDome;
-uniform float uDrop;
-uniform float uPinch;
-uniform float uTilt;
+uniform float uPlateScale; // plate size relative to the tile
+uniform float uShapeN;     // superellipse exponent: 2 = circle
+uniform float uCornerN;    // final exponent, used by the ghost
+uniform float uOptics;     // 1 = full refraction, 0 = flat
+uniform float uPlateAlpha; // 1 = glass shown, 0 = bare logo
+uniform float uLogoHalf;   // logo half size in plate units (zoom included)
+uniform vec2 uLogoOff;     // logo centre, plate units
+uniform float uBold;       // stroke swell, in logo half-size units
+uniform float uBlur;       // edge softness, plate units
+uniform float uFrost;      // milky lift inside a young bubble
+uniform float uDome;       // lens bulge height
+uniform float uDrop;       // 1 while the glass is a round droplet, 0 once it has spread into the tile
+uniform float uPinch;      // the face's stretch toward its corners, at the rim
+uniform float uTilt;       // extra stretch of the rising diagonal's corners (0–1)
 uniform float uRim;
 uniform float uHalo;
 uniform float uShadow;
 uniform float uGhost;
-uniform float uRipR;
+uniform float uRipR;       // ripple radius, plate sizes
 uniform float uRipA;
-uniform float uBare;
-uniform float uReach;
-uniform float uCornerPull;
-uniform float uStreak;
-uniform float uWiden;
-uniform float uSlab;
-uniform float uEtaSpread;
-uniform float uFocus;
-uniform float uFocusK;
-uniform float uFocusSplit;
-uniform float uRimLine;
-uniform float uCornerOn;
-uniform float uDissolve;
-uniform float uGlow;
-uniform float uFaceDisp;
-uniform float uVivid;
+uniform float uBare;       // 1 once the logo may show without glass (the ending)
+uniform float uReach;      // the rim band's full width, plate units
+uniform float uCornerPull; // how much harder the corners pull than the sides
+uniform float uStreak;     // how far a corner smears content along the rim, in band widths
+uniform float uWiden;      // how much wider the folding band grows toward the corners
+uniform float uSlab;       // how far the slab stands above the logo, plate units
+uniform float uEtaSpread;  // index spread across the spectrum (red highest)
+uniform float uFocus;      // how far in along the diagonal a corner focuses, plate units
+uniform float uFocusK;     // how quickly the view slides back from the focus across the band
+uniform float uFocusSplit; // how much further in red meets than violet, plate units
+uniform float uRimLine;    // how far across the band the sight line takes to turn in to the focus
+uniform float uCornerOn;   // 0 while the glass is round, 1 once it has spread into the tile
+uniform float uDissolve;   // 0 → 1 as the glass lets go of the logo
+uniform float uGlow;       // colour bleed in the rim, plate units on screen
+uniform float uFaceDisp;   // lateral colour across the face
+uniform float uVivid;      // chroma lift of the dispersed light
 
 uniform float uDisp;
 uniform float uDouble;
@@ -315,21 +380,22 @@ uniform float uBevelW;
 uniform float uSpec;
 uniform float uIconPlate;
 uniform float uUseColor;
-uniform float uLightScene;
-uniform float uLightGlass;
-uniform float uKeep;
-uniform float uSheen;
-uniform float uSweep;
-uniform float uLightAng;
+uniform float uLightScene; // 1 = light backdrop, 0 = dark
+uniform float uLightGlass; // the same for what the glass sits on (the plate, when there is one)
+uniform float uKeep;       // 1 = the glass settles into a flat plate instead of letting go of it
+uniform float uSheen;      // strength of the light band crossing the face
+uniform float uSweep;      // where that band is, plate sizes along its diagonal
+uniform float uLightAng;   // how far the rim light has turned, radians
 
 uniform vec3 uBg;
 uniform vec3 uPlateCol;
 uniform vec3 uLogoCol;
 
-float px;
+float px; // one device pixel in plate units
 
 vec2 rot(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
 
+// aa: footprint of one screen pixel at q, plate units.
 vec4 logoAt(vec2 q, float blur, float aa) {
   float L = uLogoHalf;
   float k = 0.5 * uBoxFrac / L;
@@ -350,6 +416,7 @@ vec4 logoAt(vec2 q, float blur, float aa) {
   return vec4(c, a);
 }
 
+// Superellipse field. Returns signed distance (plate units, − inside); g = 1 on the rim.
 float shape(vec2 p, float scale, float n, out vec2 nOut, out float g, out vec2 dg) {
   vec2 pp = p / scale;
   vec2 a = max(abs(pp), vec2(1e-6));
@@ -360,6 +427,7 @@ float shape(vec2 p, float scale, float n, out vec2 nOut, out float g, out vec2 d
   return (g - 1.0) / dgl * scale;
 }
 
+// Curvature radius (plate units) of the shape's contour through p.
 float contourRadius(vec2 p, float scale, float n) {
   vec2 a = max(abs(p / scale), vec2(1e-4));
   vec2 a1 = pow(a, vec2(n - 1.0));
@@ -368,6 +436,9 @@ float contourRadius(vec2 p, float scale, float n) {
   return scale / max(k, 1e-3);
 }
 
+// Where the glass at x = s / bwF across its rounded edge looks: a slab uSlab above the logo with a
+// quarter-round edge of radius bwF. A straight-down sight line bends inward by Snell's law, so the
+// outer rim looks deepest and the view eases back to the face across the edge.
 vec2 refractSample(float x, float bwF, float eta, float R, vec2 dirOut, vec2 p, float dome, float offMul) {
   float u = clamp(1.0 - x, 0.0, 0.995);
   float th = asin(u), thr = asin(u / eta);
@@ -379,6 +450,8 @@ vec2 refractSample(float x, float bwF, float eta, float R, vec2 dirOut, vec2 p, 
 
 float gauss(float x, float c, float w) { float d = (x - c) / w; return exp(-0.5 * d * d); }
 float band(float x, float a, float b, float w) { return smoothstep(a - w, a, x) * (1.0 - smoothstep(b, b + w, x)); }
+
+// Visible spectrum, red (0) to violet (1).
 float bump(float x, float c, float w) { float d = (x - c) / w; return exp(-0.5 * d * d); }
 vec3 spectrum(float x) {
   return vec3(bump(x, 0.34, 0.2) + 0.08 * bump(x, 0.93, 0.05), bump(x, 0.58, 0.1), bump(x, 0.8, 0.11));
@@ -405,15 +478,19 @@ void main() {
   float pinchPart = uPinch * min(g * g, 1.0) * diag * diag * tilt;
   float dome = uDome * (1.0 - min(g * g, 1.0)) + pinchPart;
   vec2 dirOut = normalize(mix(nOut, p / max(length(p), 1e-4), 0.2));
+  // Rounded corners curve both ways, so they draw content in from deeper than the sides.
   float cornerness = max(smoothstep(0.1, 0.9, 4.0 * nOut.x * nOut.x * nOut.y * nOut.y), smoothstep(0.15, 0.75, diag));
   float offMul = 1.0 + 0.4 * max(uCornerPull - 1.0, 0.0) * tilt * cornerness * uCornerOn;
+  // Around a corner every sight line meets at one focus a little way in along the diagonal.
   vec2 focus = sign(p) * (pow(0.5, 1.0 / uShapeN) - uFocus * 0.70710678) * uPlateScale;
   float focusW = tilt * cornerness * uOptics * uCornerOn;
   float bwF = max(uReach, 0.004) * (1.0 + uWiden * tilt * cornerness * uCornerOn);
   float xf = clamp(s / bwF, 0.0, 1.0);
+  // Footprint of one pixel after refraction, measured in uniform control flow.
   vec2 qc = refractSample(xf, bwF, 1.5, R, dirOut, p, dome, offMul);
   float foot = max(max(length(dFdx(qc)), length(dFdy(qc))), 0.25 * px);
 
+  // Backdrop: anticipation ghost, ripple, soft lift shadow and glow.
   vec3 bg = uBg;
   vec3 lift = mix(uBg + vec3(0.06), mix(uBg, vec3(1.0), 0.55), uLightScene);
   if (uGhost > 0.001) {
@@ -438,10 +515,12 @@ void main() {
   vec3 col = bg;
   float soft = px + uBlur * 0.8 + 0.06 * uDissolve * (1.0 - uKeep) * uPlateScale;
   if (sd < soft) {
+    // Lighting surface: a superellipse quarter, flat toward the face and steep at the rim.
     float y1 = 1.0 - x;
     const float K = 2.6;
     float base1 = max(1.0 - pow(y1, K), 1e-4);
     float db = min(pow(y1, K - 1.0) * pow(base1, 1.0 / K - 1.0), 25.0);
+    // A second, lower step just inside the first draws the faint inner line.
     float s1 = bw * 0.62;
     float w2 = bw * 0.22;
     float t2 = clamp((s - s1) / w2, -1.0, 1.0);
@@ -454,11 +533,12 @@ void main() {
     vec3 liftG = mix(back + vec3(0.06), mix(back, vec3(1.0), 0.55), uLightGlass);
     float rblur = uBlur + 0.05 * length(qc - p) + min(uGlow * uOptics * (1.0 - xf) * foot / px, 0.04);
 
+    // Each wavelength refracts by its own index, so everything the edge draws in fans into colour
+    // while the face stays crisp. Around a corner the samples also smear along the rim.
     float cornerW = smoothstep(0.1, 0.9, 4.0 * nOut.x * nOut.x * nOut.y * nOut.y);
     float streak = 0.35 * uStreak * bw * mix(0.15, 1.0, cornerW) * pow(1.0 - xf, 1.5) * uOptics;
     vec2 tangent = vec2(-nOut.y, nOut.x);
     vec3 acc = vec3(0.0), wsum = vec3(0.0);
-    float logoAlphaAcc = 0.0;
     for (int i = 0; i < 20; i++) {
       float lam = (float(i) + 0.5) / 20.0;
       float c = uDisp * (1.0 - 2.0 * lam);
@@ -474,13 +554,12 @@ void main() {
       vec4 l = logoAt(sp, rblur + 0.12 * streak + uFaceDisp * 0.5 * max(c, 0.0) * faceOnly, foot);
       vec3 w = spectrum(lam);
       acc += mix(back, l.rgb, l.a) * w;
-      logoAlphaAcc += l.a;
       wsum += w;
     }
     vec3 trans = acc / wsum;
-    float avgLogoA = logoAlphaAcc / 20.0;
     float tl = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     trans = clamp(tl + (trans - tl) * (1.0 + uVivid * uOptics), 0.0, 1.0);
+    // A young droplet is milky; the haze only ever lightens.
     float hazeLum = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     float hazeGate = mix(1.0 - smoothstep(0.25, 0.75, hazeLum), smoothstep(0.25, 0.75, hazeLum), uLightGlass);
     trans = mix(trans, liftG, uFrost * 0.45 * hazeGate);
@@ -489,6 +568,8 @@ void main() {
     float lit = uSpec * glassAmt;
     vec3 rimCol = mix(vec3(0.80, 0.87, 0.97), vec3(1.0), uLightGlass);
 
+    // Light backdrop: the thick edge glows softly white over a clear face, with a hairline that is
+    // bright along the top and right and a thin dark silhouette down the left and bottom.
     float sc = uPlateScale;
     float tLum = dot(trans, vec3(0.2126, 0.7152, 0.0722));
     float lightOnly = smoothstep(0.35, 0.85, tLum);
@@ -503,6 +584,7 @@ void main() {
     lightGlass *= 1.0 - 0.05 * (1.0 - hw) * edgeLine * glassAmt * (1.0 - uDrop);
     lightGlass = mix(lightGlass, vec3(1.0), 0.55 * uDrop * glassAmt * edgeLine);
 
+    // Dark backdrop: a cool rim light that grows toward the steep edge, and a small key highlight.
     vec3 Nl = normalize(vec3(-grad, 1.0));
     float edge = 1.0 - Nl.z;
     vec2 ldir = rot(normalize(vec2(-0.62, 0.78)), uLightAng);
@@ -515,6 +597,7 @@ void main() {
     darkGlass = mix(darkGlass, rimCol, uDrop * 0.4 * uSpec * (1.0 - smoothstep(0.0, 0.1 * uPlateScale, s)));
     vec3 glass = mix(darkGlass, lightGlass, uLightGlass);
 
+    // While the glass holds the logo a soft band of light crosses the face, brightest near the rim.
     float sweepD = dot(p / uPlateScale, normalize(vec2(0.8, 0.6))) - uSweep;
     float sheen = uSheen * glassAmt * exp(-sweepD * sweepD / 0.03) * (0.55 + 0.45 * (1.0 - x));
     glass = mix(glass, vec3(1.0), sheen * mix(0.22, 0.42, uLightGlass));
@@ -523,18 +606,9 @@ void main() {
     col = mix(bg, glass, cov);
   }
 
-  float glassTileA = clamp(
-    avgLogoA +
-    (fres * 0.85 + spc * 1.5 + sheen * 1.0 + (1.0 - x) * 0.4) * glassAmt,
-    0.0,
-    1.0
-  );
-  float tileAlpha = clamp(0.5 - sd / soft, 0.0, 1.0) * glassTileA * uPlateAlpha;
-  float logoAlpha = lg.a * uBare;
-  float totalAlpha = clamp(tileAlpha + logoAlpha, 0.0, 1.0);
   vec3 outc = mix(plain, col, uPlateAlpha);
   outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-  outColor = vec4(outc * totalAlpha, totalAlpha);
+  outColor = vec4(outc, 1.0);
 }`
 
 /* ------------------------------------------------------------------ *
@@ -543,7 +617,7 @@ void main() {
 type Frame = ReturnType<typeof frameAt>
 
 function createRenderer(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: true, alpha: true })
+  const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false })
   if (!gl) return null
   const compile = (type: number, src: string) => {
     const sh = gl.createShader(type)!
@@ -614,7 +688,7 @@ function createRenderer(canvas: HTMLCanvasElement) {
       if (typeof v === "number" && U[k]) gl!.uniform1f(U[k], v)
     }
     gl!.uniform3fv(U.uBg, fr.uBg)
-    gl!.uniform3fv(U.uPlateCol, fr.uPlateCol)
+    gl!.uniform3fv(U.PlateCol || U.uPlateCol, fr.uPlateCol)
     gl!.uniform3fv(U.uLogoCol, fr.uLogoCol)
     gl!.uniform2fv(U.uLogoOff, fr.uLogoOff)
     gl!.drawArrays(gl!.TRIANGLES, 0, 3)
@@ -646,7 +720,6 @@ const smoother = (a: number, b: number, x: number) => {
 }
 
 function hexToRgb(hex: string): [number, number, number] {
-  if (!hex || hex === "transparent") return [0, 0, 0]
   let h = hex.replace("#", "")
   if (h.length === 3) h = h.replace(/./g, "$&$&")
   const v = parseInt(h.slice(0, 6), 16) || 0
@@ -654,6 +727,7 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 const luminance = ([r, g, b]: number[]) => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
+// Step response of a spring released at t = 0, from 0 toward 1
 function spring(t: number, response: number, damping: number) {
   if (t <= 0) return 0
   const w = (2 * Math.PI) / response
@@ -690,6 +764,7 @@ function frameAt(T: number, P: Settings, outro = 0) {
   const drop = 1 - smooth(0.05, 1, morph)
   const appear = smooth(0, 0.08, T)
   const drift = P.drift * spring(T - 0.3, 2.2, 1)
+
   const zoomIn = 0.25 * spring(T, 0.7, 1) + 0.75 * smoother(0, P.glide, T)
   const settle = spring(T - 0.5, 2.4, 1)
   const exit = spring(T - tx, 0.95, 1)
@@ -699,6 +774,7 @@ function frameAt(T: number, P: Settings, outro = 0) {
   const bandW = mixVal(P.bevelWidth, Math.max(P.bevelWidth, 0.4), drop)
   const plateScale = mixVal(P.startSize, 1, grow) * (1 + drift) * (1 + 0.14 * release * (1 - keep)) * (1 - keep * (0.03 * release + 0.06 * outro))
   const bg = hexToRgb(P.background)
+
   return {
     uPlateScale: plateScale,
     uShapeN: mixVal(2, P.corner, morph),
@@ -758,7 +834,7 @@ function frameAt(T: number, P: Settings, outro = 0) {
  * Component
  * ------------------------------------------------------------------ */
 export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
-  /** SVG markup (`<svg …>…</svg>`) or an image URL. Only the shape is used unless `originalColors` is on */
+  /** SVG markup (`<svg …>…</svg>`) or an image URL */
   logo: string
   /** Starting preset: light glass over a pale backdrop, or dark glass with an icon plate */
   look?: Look
@@ -784,7 +860,6 @@ export interface GlassIconRevealProps extends Omit<React.HTMLAttributes<HTMLDivE
   /** Seconds the finished logo stays before the next loop */
   hold?: number
   speed?: number
-  /** Freeze the reveal at this many seconds instead of playing it */
   time?: number
   /** Fine-tune the glass and the motion */
   tuning?: Partial<GlassTuning>
@@ -873,7 +948,7 @@ export function GlassIconReveal({
       role="img"
       aria-label={label}
       className={cn("relative isolate cursor-pointer overflow-hidden select-none", className)}
-      style={{ backgroundColor: settings.background === "transparent" ? "transparent" : settings.background, ...style }}
+      style={{ backgroundColor: settings.background, ...style }}
       onClick={(e) => {
         engineRef.current?.replay()
         onClick?.(e)
@@ -907,7 +982,7 @@ export function GlassIconReveal({
 
 function startEngine(
   wrap: HTMLDivElement,
-  live: React.RefObject<{ settings: Settings; loop: boolean; speed: number; time?: number }>,
+  live: React.MutableRefObject<{ settings: Settings; loop: boolean; speed: number; time?: number }>,
 ) {
   const canvas = document.createElement("canvas")
   canvas.setAttribute("aria-hidden", "true")
@@ -941,7 +1016,6 @@ function startEngine(
     raf = 0
     const dt = Math.min(0.1, (now - last) / 1000)
     last = now
-    if (!live.current) return
     const { settings: P, loop, speed, time: fixed } = live.current
     const end = endOf(P)
     if (fixed !== undefined) {
@@ -1063,51 +1137,7 @@ function startEngine(
 }
 
 /* ------------------------------------------------------------------ *
- * CAI Logo Reveal — Animación de inicio con @[CAI_LOGO.png]
- * ------------------------------------------------------------------ */
-export interface CaiGlassRevealProps extends Omit<GlassIconRevealProps, "logo"> {
-  logoPath?: string
-}
-
-export function CaiGlassReveal({
-  logoPath = "/CAI_LOGO.png",
-  tuning,
-  ...props
-}: CaiGlassRevealProps) {
-  return (
-    <GlassIconReveal
-      logo={logoPath}
-      label="Centro de Atención Integral • IMPULSA"
-      look="light"
-      background="transparent"
-      plateColor="transparent"
-      iconPlate={false}
-      keepPlate={false}
-      logoColor="#ffffff"
-      originalColors={true}
-      tileSize={340}
-      logoScale={0.72}
-      finalScale={0.85}
-      loop={false}
-      speed={1.06}
-      {...props}
-      tuning={{
-        startZoom: 2.2,
-        dispersion: 1.2,
-        colorBleed: 0.6,
-        sheen: 1.4,
-        halo: 0,
-        shadow: 0,
-        ripple: 0,
-        present: 2.2,
-        ...tuning,
-      }}
-    />
-  )
-}
-
-/* ------------------------------------------------------------------ *
- * GlassReveal21st
+ * Presets: GlassReveal21st & GlassRevealCai
  * ------------------------------------------------------------------ */
 const MARK_21ST = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="247.7 247.8 330.4 330.4"><path fill-rule="evenodd" d="M543.595 247.8C562.596 247.8 578 263.209 578 282.217V492.158C578 494.06 576.46 495.6 574.559 495.6H471.345C469.445 495.6 467.906 497.141 467.906 499.042V574.758C467.906 576.66 466.364 578.2 464.464 578.2H282.12C263.118 578.2 247.714 562.791 247.714 543.783V499.499C247.714 497.081 248.988 494.84 251.061 493.597L374.676 419.4C377.484 417.714 376.542 413.562 373.535 413.054L372.915 413H251.156C249.254 413 247.714 411.46 247.714 409.558V333.842C247.714 331.941 249.254 330.4 251.156 330.4H381.893C383.792 330.4 385.334 328.86 385.334 326.958V251.242C385.334 249.341 386.874 247.8 388.773 247.8H543.595ZM388.773 330.4C386.874 330.4 385.334 331.941 385.334 333.842V492.158C385.334 494.06 386.874 495.6 388.773 495.6H464.464C466.364 495.6 467.906 494.06 467.906 492.158V333.842C467.906 331.941 466.364 330.4 464.464 330.4H388.773Z"/></svg>`
 
@@ -1131,8 +1161,39 @@ export function GlassReveal21st({ tuning, ...props }: GlassReveal21stProps) {
   )
 }
 
+export type GlassRevealCaiProps = Omit<GlassIconRevealProps, "logo">
+
+/** Preset para el logo oficial de CAI con animación de 3.3s exactos */
+export function GlassRevealCai({ tuning, ...props }: GlassRevealCaiProps) {
+  return (
+    <GlassIconReveal
+      logo="/CAI_LOGO.png"
+      label="Centro de Atención Integral CAI"
+      look="dark"
+      background="#000000"
+      plateColor="#060b18"
+      originalColors={true}
+      tileSize={280}
+      logoScale={0.72}
+      finalScale={0.92}
+      loop={false}
+      speed={1.0}
+      tuning={{
+        present: 2.2, // Con TAIL de 1.1s, 2.2 + 1.1 = 3.3 segundos exactos
+        startZoom: 2.2,
+        dispersion: 1.1,
+        colorBleed: 0.6,
+        sheen: 1.0,
+        specular: 1.0,
+        ...tuning,
+      }}
+      {...props}
+    />
+  )
+}
+
 export function GlassReveal21stDemo() {
   return <GlassReveal21st className="h-svh min-h-[420px] w-full" />
 }
 
-export default CaiGlassReveal
+export default GlassIconReveal
