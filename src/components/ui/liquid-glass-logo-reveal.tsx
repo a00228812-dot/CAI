@@ -542,6 +542,8 @@ void main() {
     float streak = 0.35 * uStreak * bw * mix(0.15, 1.0, cornerW) * pow(1.0 - xf, 1.5) * uOptics;
     vec2 tangent = vec2(-nOut.y, nOut.x);
     vec3 acc = vec3(0.0), wsum = vec3(0.0);
+    vec3 logoAcc = vec3(0.0);
+    float logoAlphaAcc = 0.0;
     for (int i = 0; i < 20; i++) {
       float lam = (float(i) + 0.5) / 20.0;
       float c = uDisp * (1.0 - 2.0 * lam);
@@ -569,7 +571,7 @@ void main() {
 
     float glassAmt = pow(1.0 - uDissolve, 1.5);
     float lit = uSpec * glassAmt;
-    vec3 rimCol = mix(vec3(0.80, 0.87, 0.97), vec3(1.0), uLightGlass);
+    // rimCol initialized above
 
     // Light backdrop: the thick edge glows softly white over a clear face, with a hairline that is
     // bright along the top and right and a thin dark silhouette down the left and bottom.
@@ -592,10 +594,10 @@ void main() {
     float edge = 1.0 - Nl.z;
     vec2 ldir = rot(normalize(vec2(-0.62, 0.78)), uLightAng);
     float side = dot(nOut, ldir);
-    float fres = pow(edge, 1.5);
+    fres = pow(edge, 1.5);
     vec3 rim = rimCol * fres * (0.35 + 0.65 * max(side, -side * 0.8)) * uRim * 0.65;
     vec3 Hv = normalize(normalize(vec3(-0.45, 0.6, 0.66)) + vec3(0.0, 0.0, 1.0));
-    float spc = pow(max(dot(Nl, Hv), 0.0), 140.0) * 0.8 * smoothstep(0.0, 0.25, y1);
+    spc = pow(max(dot(Nl, Hv), 0.0), 140.0) * 0.8 * smoothstep(0.0, 0.25, y1);
     vec3 darkGlass = trans * (1.0 - 0.25 * fres) + (rim + vec3(spc)) * lit;
     darkGlass = mix(darkGlass, rimCol, uDrop * 0.4 * uSpec * (1.0 - smoothstep(0.0, 0.1 * uPlateScale, s)));
     vec3 glass = mix(darkGlass, lightGlass, uLightGlass);
@@ -611,16 +613,27 @@ void main() {
 
   if (uTransparent > 0.5) {
     float cov = clamp(0.5 - sd / soft, 0.0, 1.0);
-    float logoA = lg.a * uBare;
-    // Inside the glass plate, calculate glass alpha with specular & sheen
     float glassAmt = pow(1.0 - uDissolve, 1.5);
     float lit = uSpec * glassAmt;
     float sweepD = dot(p / uPlateScale, normalize(vec2(0.8, 0.6))) - uSweep;
     float sheen = uSheen * glassAmt * exp(-sweepD * sweepD / 0.03) * (0.55 + 0.45 * (1.0 - x));
-    float glassAlpha = clamp(cov * (0.35 + 0.65 * clamp(lit + sheen, 0.0, 1.0)), 0.0, 1.0);
-    float alpha = clamp(mix(logoA, max(logoA, glassAlpha), uPlateAlpha), 0.0, 1.0);
-    vec3 outc = mix(lg.rgb, col, uPlateAlpha);
-    outColor = vec4(outc, alpha);
+    float edgeLine = gauss(s, 0.005 * uPlateScale, 0.0045 * uPlateScale);
+
+    // Reflexiones de luz cristalinas sobre el vidrio líquido (sin fondo azul ni negro):
+    // El borde curvo (Fresnel), el punto especular brillante, el perfil biselado y la banda de brillo
+    vec3 glassReflections = (rimCol * fres * 0.95 + vec3(spc * 1.4) + vec3(edgeLine * 0.8)) * lit + vec3(sheen * 0.9);
+    float reflAlpha = clamp((fres * 0.85 + spc * 1.6 + edgeLine * 0.9 + sheen * 0.95) * lit, 0.0, 1.0) * cov;
+
+    // Logo refractado nítido con sus colores originales (sin mezclar con fondos oscuros)
+    float logoA = mix(lg.a * uBare, logoAlphaRefracted, uPlateAlpha);
+    vec3 logoC = mix(lg.rgb, logoRefracted, uPlateAlpha);
+
+    // Color del píxel: logo puro + destellos de luz pura del vidrio
+    vec3 crystalCol = logoC + glassReflections;
+
+    // Alpha transparente: visible únicamente donde esté el logo o donde brille el relieve del vidrio
+    float totalAlpha = clamp(logoA + reflAlpha, 0.0, 1.0);
+    outColor = vec4(crystalCol, totalAlpha);
   } else {
     vec3 outc = mix(plain, col, uPlateAlpha);
     outc += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
@@ -1194,7 +1207,9 @@ export function GlassRevealCai({ tuning, transparent = true, ...props }: GlassRe
       look="dark"
       transparent={transparent}
       background="transparent"
-      plateColor="#060b18"
+      plateColor="transparent"
+      iconPlate={false}
+      keepPlate={false}
       originalColors={true}
       tileSize={280}
       logoScale={0.72}
@@ -1202,12 +1217,15 @@ export function GlassRevealCai({ tuning, transparent = true, ...props }: GlassRe
       loop={false}
       speed={1.0}
       tuning={{
-        present: 2.2, // Con TAIL de 1.1s, 2.2 + 1.1 = 3.3 segundos exactos
+        present: 2.2, // 2.2s + 1.1s TAIL = 3.3 segundos exactos
         startZoom: 2.2,
-        dispersion: 1.1,
-        colorBleed: 0.6,
-        sheen: 1.0,
-        specular: 1.0,
+        dispersion: 1.2,
+        colorBleed: 0.7,
+        sheen: 1.2,
+        specular: 1.3,
+        shadow: 0,
+        halo: 0,
+        ripple: 0,
         ...tuning,
       }}
       {...props}
