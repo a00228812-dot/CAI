@@ -1,0 +1,1171 @@
+CLOUDS SHADER
+// --- Component ---
+"use client";
+
+import React, { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
+
+export type CloudShaderProps = {
+  className?: string;
+  children?: React.ReactNode;
+  /** Animation speed multiplier. 1 = default drift. */
+  speed?: number;
+  /** Number of clouds (1-6). */
+  count?: number;
+  /** Cloud tint color (hex or rgb string). */
+  cloudColor?: string;
+  /** Sky color at the top (hex or rgb string). */
+  skyTopColor?: string;
+  /** Sky color at the bottom (hex or rgb string). */
+  skyBottomColor?: string;
+};
+
+const VERT = `
+attribute vec2 a_pos;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+`;
+
+// Original cloud shader for Aceternity UI.
+// Each cloud is an asymmetric envelope (dome top, flat base) filled with
+// domain-warped billow noise. A second density sample above the pixel
+// approximates self-shadowing. Clouds drift horizontally and wrap around.
+const FRAG = `
+precision highp float;
+
+varying vec2 v_uv;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform float u_count;
+uniform vec3 u_cloud;
+uniform vec3 u_skyTop;
+uniform vec3 u_skyBottom;
+
+const mat2 R = mat2(0.80, 0.60, -0.60, 0.80);
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(41.31, 289.17))) * 26737.367);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 4; i++) {
+    sum += amp * vnoise(p);
+    p = R * p * 2.03 + 19.19;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+// billow noise: sharp puffy ridges, like cauliflower cloud tops
+float billow(vec2 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 5; i++) {
+    sum += amp * (1.0 - abs(2.0 * vnoise(p) - 1.0));
+    p = R * p * 2.11 + 13.37;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+// raw density for one cloud at point p
+float cloudDensity(vec2 p, vec2 c, vec2 r, float seed, float t) {
+  vec2 q = p - c;
+
+  // envelope: dome above the center, flat base below
+  float ry = q.y > 0.0 ? r.y : r.y * 0.42;
+  float env = 1.0 - length(vec2(q.x / r.x, q.y / ry));
+  if (env < -0.35) return 0.0;
+
+  // domain-warped billow detail, moves with the cloud, evolves slowly
+  vec2 dp = q * (2.4 / r.x) + seed;
+  dp += 0.6 * vec2(
+    fbm(dp * 1.4 + t * 0.04),
+    fbm(dp * 1.4 + 7.7 - t * 0.03)
+  );
+  float detail = billow(dp * 1.6);
+
+  return env + (detail - 0.62) * 0.62;
+}
+
+// shades one cloud and blends it over the current color
+vec3 shadeCloud(vec3 color, vec3 sky, vec2 p, vec2 c, vec2 r, float seed, float t, float dist) {
+  float d = cloudDensity(p, c, r, seed, t);
+  if (d < 0.02) return color;
+
+  // sample density toward the sun (straight up) for self-shadowing
+  float dUp = cloudDensity(p + vec2(0.0, r.y * 0.55), c, r, seed, t);
+  float occl = clamp((dUp - d) * 1.1 + d * 0.55, 0.0, 1.0);
+
+  vec3 lit = u_cloud * 1.04;
+  vec3 shadow = mix(u_cloud * 0.60, sky, 0.38);
+  vec3 cloudCol = mix(lit, shadow, occl * 0.85);
+
+  float alpha = smoothstep(0.02, 0.38, d);
+
+  // silver lining on thin edges
+  float rim = smoothstep(0.02, 0.14, d) * (1.0 - smoothstep(0.14, 0.40, d));
+  cloudCol += rim * 0.10;
+
+  // atmospheric perspective: far clouds fade into the sky
+  cloudCol = mix(cloudCol, sky, dist * 0.35);
+  alpha *= mix(1.0, 0.8, dist);
+
+  return mix(color, cloudCol, alpha);
+}
+
+// one drifting cloud: horizontal wrap + gentle vertical bob
+vec3 cloudPass(vec3 color, vec3 sky, vec2 p, float aspect, float t,
+               float spd, float phase, float y, vec2 r, float seed, float dist) {
+  float cx = mix(-r.x - 0.25, aspect + r.x + 0.25, fract(t * spd + phase));
+  float cy = y + sin(t * 0.05 + phase * 6.2831) * 0.012;
+  return shadeCloud(color, sky, p, vec2(cx, cy), r, seed, t, dist);
+}
+
+void main() {
+  float aspect = u_res.x / u_res.y;
+  vec2 p = vec2(v_uv.x * aspect, v_uv.y);
+  float t = u_time;
+
+  vec3 sky = mix(u_skyBottom, u_skyTop, v_uv.y);
+  vec3 color = sky;
+
+  // faint haze band near the horizon
+  color = mix(color, u_skyBottom * 1.06, smoothstep(0.35, 0.0, v_uv.y) * 0.5);
+
+  // soft sun glow, upper area
+  vec2 sunPos = vec2(aspect * 0.78, 0.92);
+  float sunDist = length(p - sunPos);
+  color += vec3(1.0, 0.95, 0.82) * exp(-sunDist * sunDist * 5.0) * 0.28;
+
+  // thin cirrus streaks, stretched horizontally, high in the sky
+  float cirrusBand = smoothstep(0.55, 0.8, v_uv.y) * (1.0 - smoothstep(0.9, 1.0, v_uv.y));
+  if (cirrusBand > 0.01) {
+    float streak = fbm(vec2(p.x * 1.6 - t * 0.006, p.y * 12.0));
+    float wisp = smoothstep(0.52, 0.78, streak) * cirrusBand;
+    color = mix(color, u_cloud * 0.98, wisp * 0.35);
+  }
+
+  // far layer: small, high, slow
+  if (u_count > 5.5) {
+    color = cloudPass(color, sky, p, aspect, t, 0.006, 0.10, 0.84, vec2(0.20, 0.10), 43.7, 1.0);
+  }
+  if (u_count > 4.5) {
+    color = cloudPass(color, sky, p, aspect, t, 0.008, 0.62, 0.73, vec2(0.24, 0.12), 71.3, 0.85);
+  }
+
+  // middle layer
+  if (u_count > 3.5) {
+    color = cloudPass(color, sky, p, aspect, t, 0.011, 0.33, 0.60, vec2(0.34, 0.16), 17.3, 0.55);
+  }
+  if (u_count > 2.5) {
+    color = cloudPass(color, sky, p, aspect, t, 0.013, 0.80, 0.47, vec2(0.30, 0.15), 29.9, 0.45);
+  }
+
+  // near layer: big, low, fast
+  if (u_count > 1.5) {
+    color = cloudPass(color, sky, p, aspect, t, 0.016, 0.05, 0.35, vec2(0.46, 0.20), 91.1, 0.15);
+  }
+  color = cloudPass(color, sky, p, aspect, t, 0.020, 0.48, 0.20, vec2(0.56, 0.24), 57.2, 0.0);
+
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+function parseHex(color: string): [number, number, number] {
+  const value = color.trim();
+  if (value.startsWith("#")) {
+    const hex = value.slice(1);
+    if (hex.length === 3) {
+      return [
+        parseInt(hex[0] + hex[0], 16) / 255,
+        parseInt(hex[1] + hex[1], 16) / 255,
+        parseInt(hex[2] + hex[2], 16) / 255,
+      ];
+    }
+    return [
+      parseInt(hex.slice(0, 2), 16) / 255,
+      parseInt(hex.slice(2, 4), 16) / 255,
+      parseInt(hex.slice(4, 6), 16) / 255,
+    ];
+  }
+  const rgb = value.match(/[\d.]+/g);
+  if (rgb && rgb.length >= 3) {
+    return [Number(rgb[0]) / 255, Number(rgb[1]) / 255, Number(rgb[2]) / 255];
+  }
+  return [0.95, 0.95, 0.95];
+}
+
+function compile(gl: WebGLRenderingContext, type: number, source: string) {
+  const shader = gl.createShader(type);
+  if (!shader) return null;
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+export const CloudShader = ({
+  className,
+  children,
+  speed = 1,
+  count = 6,
+  cloudColor = "#fbf8f2",
+  skyTopColor = "#3876ba",
+  skyBottomColor = "#8cbfe8",
+}: CloudShaderProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const paramsRef = useRef({
+    speed,
+    count,
+    cloudColor,
+    skyTopColor,
+    skyBottomColor,
+  });
+
+  paramsRef.current = {
+    speed,
+    count,
+    cloudColor,
+    skyTopColor,
+    skyBottomColor,
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      premultipliedAlpha: false,
+    });
+    if (!gl) return;
+
+    const vert = compile(gl, gl.VERTEX_SHADER, VERT);
+    const frag = compile(gl, gl.FRAGMENT_SHADER, FRAG);
+    if (!vert || !frag) return;
+
+    const program = gl.createProgram();
+    if (!program) return;
+    gl.attachShader(program, vert);
+    gl.attachShader(program, frag);
+    gl.bindAttribLocation(program, 0, "a_pos");
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
+    gl.useProgram(program);
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 3, -1, -1, 3]),
+      gl.STATIC_DRAW,
+    );
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    const loc = {
+      res: gl.getUniformLocation(program, "u_res"),
+      time: gl.getUniformLocation(program, "u_time"),
+      count: gl.getUniformLocation(program, "u_count"),
+      cloud: gl.getUniformLocation(program, "u_cloud"),
+      skyTop: gl.getUniformLocation(program, "u_skyTop"),
+      skyBottom: gl.getUniformLocation(program, "u_skyBottom"),
+    };
+
+    let frame = 0;
+    let running = true;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const w = Math.max(1, Math.floor(width * dpr));
+      const h = Math.max(1, Math.floor(height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      gl.viewport(0, 0, w, h);
+      gl.uniform2f(loc.res, w, h);
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    resize();
+
+    const start = performance.now();
+    const draw = (now: number) => {
+      if (!running) return;
+      const p = paramsRef.current;
+      const elapsed = reduceMotion ? 0 : ((now - start) / 1000) * p.speed;
+      const cloud = parseHex(p.cloudColor);
+      const skyTop = parseHex(p.skyTopColor);
+      const skyBottom = parseHex(p.skyBottomColor);
+
+      gl.uniform1f(loc.time, elapsed);
+      gl.uniform1f(loc.count, Math.min(6, Math.max(1, p.count)));
+      gl.uniform3f(loc.cloud, cloud[0], cloud[1], cloud[2]);
+      gl.uniform3f(loc.skyTop, skyTop[0], skyTop[1], skyTop[2]);
+      gl.uniform3f(loc.skyBottom, skyBottom[0], skyBottom[1], skyBottom[2]);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      frame = requestAnimationFrame(draw);
+    };
+
+    frame = requestAnimationFrame(draw);
+
+    return () => {
+      running = false;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      gl.deleteBuffer(buffer);
+      gl.deleteProgram(program);
+      gl.deleteShader(vert);
+      gl.deleteShader(frag);
+    };
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        "relative h-full min-h-80 w-full overflow-hidden",
+        className,
+      )}
+    >
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      />
+      {children ? (
+        <div className="relative z-10 flex h-full w-full items-center justify-center">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+export default CloudShader;
+
+
+// --- Demo ---
+import { CloudShader } from "@/components/ui/cloud-shader";
+
+export default function CloudShaderDemo() {
+  return (
+    <div className="w-full h-screen">
+      <CloudShader className="h-full w-full" />
+    </div>
+  );
+}
+
+
+COMPONENTE NUBES DISPERSAS
+"use client";
+
+import { useEffect, useMemo, useRef } from "react";
+import { cn } from "@/lib/utils";
+
+const vertexShaderGLSL = `
+attribute vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
+
+const fragmentShaderGLSL = `
+precision highp float;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec3 u_colorBottom;
+uniform vec3 u_colorMid;
+uniform vec3 u_colorTop;
+uniform float u_speed;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+float fbm(vec2 p, float t) {
+  float v = 0.0;
+  float a = 0.5;
+  float fi = 0.0;
+  mat2 rot = mat2(0.86, 0.51, -0.51, 0.86);
+  
+  for (int i = 0; i < 6; i++) {
+    vec2 morph = vec2(sin(t * 0.5 + fi), cos(t * 0.3 - fi)) * 0.05;
+    v += a * noise(p + morph);
+    p = rot * p * 2.0;
+    a *= 0.5;
+    fi += 1.0;
+  }
+  return v;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_resolution;
+  float t = u_time * u_speed;
+  vec2 aspect = vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0);
+  vec2 p = (uv - 0.5) * aspect;
+
+  vec2 wind = vec2(t * 0.1, t * 0.02);
+
+  float pattern = fbm(p * 2.2 - wind, t);
+
+  float bandLow = smoothstep(0.3, 0.65, pattern);
+  float bandHigh = smoothstep(0.7, 0.95, pattern); 
+  
+  vec3 color = mix(u_colorBottom, u_colorMid, bandLow);
+  color = mix(color, u_colorTop, bandHigh);
+
+  gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+interface CloudscapeProps extends React.HTMLAttributes<HTMLDivElement> {
+  colorBottom?: string;
+  colorMid?: string;
+  colorTop?: string;
+  speed?: number;
+  height?: string;
+}
+
+const DEFAULT_COLOR = "#0d1117";
+
+const COLOR_HEX_PATTERN = /^#?[0-9a-fA-F]{6}$/;
+
+function normalizeHexColor(value: string, fallback: string) {
+  const trimmed = value.trim();
+  if (!COLOR_HEX_PATTERN.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+}
+
+function hexToRgbNormalized(hex: string): [number, number, number] {
+  const normalized = normalizeHexColor(hex, DEFAULT_COLOR).replace("#", "");
+  const r = parseInt(normalized.slice(0, 2), 16) / 255;
+  const g = parseInt(normalized.slice(2, 4), 16) / 255;
+  const b = parseInt(normalized.slice(4, 6), 16) / 255;
+  return [r, g, b];
+}
+
+const Cloudscape = ({
+  colorBottom = "#87ceeb",
+  colorMid = "#f8f8f8",
+  colorTop = "#ffffff",
+  speed = 1,
+  height = "100vh",
+  className,
+  style,
+  children,
+  ...props
+}: CloudscapeProps) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  const settings = useMemo(
+    () => ({
+      colorBottom,
+      colorMid,
+      colorTop,
+      speed,
+    }),
+    [colorBottom, colorMid, colorTop, speed],
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const host = hostRef.current;
+    if (!canvas || !host) {
+      return;
+    }
+
+    const gl = canvas.getContext("webgl", { antialias: true, alpha: true });
+    if (!gl) {
+      console.error("WebGL not supported");
+      return;
+    }
+
+    const compileGLSLShader = (type: number, source: string) => {
+      const shader = gl.createShader(type);
+      if (!shader) {
+        return null;
+      }
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    };
+
+    const vertexShaderObject = compileGLSLShader(
+      gl.VERTEX_SHADER,
+      vertexShaderGLSL,
+    );
+    const fragmentShaderObject = compileGLSLShader(
+      gl.FRAGMENT_SHADER,
+      fragmentShaderGLSL,
+    );
+    if (!vertexShaderObject || !fragmentShaderObject) {
+      return;
+    }
+
+    const glProgram = gl.createProgram();
+    if (!glProgram) {
+      return;
+    }
+
+    gl.attachShader(glProgram, vertexShaderObject);
+    gl.attachShader(glProgram, fragmentShaderObject);
+    gl.linkProgram(glProgram);
+
+    if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+      console.error("Program link error:", gl.getProgramInfoLog(glProgram));
+      gl.deleteProgram(glProgram);
+      gl.deleteShader(vertexShaderObject);
+      gl.deleteShader(fragmentShaderObject);
+      return;
+    }
+
+    gl.useProgram(glProgram);
+
+    const vertexPositionAttribLocation = gl.getAttribLocation(
+      glProgram,
+      "position",
+    );
+    const screenQuadVertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, screenQuadVertexBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+    gl.enableVertexAttribArray(vertexPositionAttribLocation);
+    gl.vertexAttribPointer(
+      vertexPositionAttribLocation,
+      2,
+      gl.FLOAT,
+      false,
+      0,
+      0,
+    );
+
+    const resolutionUniformLocation = gl.getUniformLocation(
+      glProgram,
+      "u_resolution",
+    );
+    const timeUniformLocation = gl.getUniformLocation(glProgram, "u_time");
+    const colorBottomUniformLocation = gl.getUniformLocation(
+      glProgram,
+      "u_colorBottom",
+    );
+    const colorMidUniformLocation = gl.getUniformLocation(
+      glProgram,
+      "u_colorMid",
+    );
+    const colorTopUniformLocation = gl.getUniformLocation(
+      glProgram,
+      "u_colorTop",
+    );
+    const speedUniformLocation = gl.getUniformLocation(glProgram, "u_speed");
+
+    if (
+      !resolutionUniformLocation ||
+      !timeUniformLocation ||
+      !colorBottomUniformLocation ||
+      !colorMidUniformLocation ||
+      !colorTopUniformLocation ||
+      !speedUniformLocation
+    ) {
+      gl.deleteBuffer(screenQuadVertexBuffer);
+      gl.deleteProgram(glProgram);
+      gl.deleteShader(vertexShaderObject);
+      gl.deleteShader(fragmentShaderObject);
+      return;
+    }
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const { width, height } = host.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
+    };
+
+    resize();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(host);
+
+    let animationFrameId = 0;
+    const start = performance.now();
+
+    const render = (now: number) => {
+      const elapsedSec = (now - start) / 1000;
+
+      const colorBottom = hexToRgbNormalized(settings.colorBottom);
+      const colorMid = hexToRgbNormalized(settings.colorMid);
+      const colorTop = hexToRgbNormalized(settings.colorTop);
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.uniform1f(timeUniformLocation, elapsedSec);
+      gl.uniform3f(
+        colorBottomUniformLocation,
+        colorBottom[0],
+        colorBottom[1],
+        colorBottom[2],
+      );
+      gl.uniform3f(
+        colorMidUniformLocation,
+        colorMid[0],
+        colorMid[1],
+        colorMid[2],
+      );
+      gl.uniform3f(
+        colorTopUniformLocation,
+        colorTop[0],
+        colorTop[1],
+        colorTop[2],
+      );
+      gl.uniform1f(speedUniformLocation, settings.speed);
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    animationFrameId = requestAnimationFrame(render);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
+      gl.deleteBuffer(screenQuadVertexBuffer);
+      gl.deleteProgram(glProgram);
+      gl.deleteShader(vertexShaderObject);
+      gl.deleteShader(fragmentShaderObject);
+    };
+  }, [settings]);
+
+  return (
+    <div
+      ref={hostRef}
+      className={cn(
+        "relative flex w-full items-center justify-center overflow-hidden bg-black",
+        className,
+      )}
+      style={{ height, containerType: "size", ...style }}
+      {...props}
+    >
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        style={{ width: "100%", height: "100%", display: "block" }}
+      />
+      {children}
+    </div>
+  );
+};
+
+export default Cloudscape;
+
+
+
+CARROUSEL DE IMAGENES QUE SE USARA PARA LOS VIDEOS DE LAS CHARLAS DE CONCIENCIA
+
+"use client";
+
+import * as React from "react";
+import { cn } from "@/lib/utils";
+
+/* ── the curved row ──────────────────────────────────────────────
+ * Scroll Tilted Grid turned on its side, with the tilt drawn as a curve.
+ * One row of images streams from right to left around the inside of a
+ * cylinder. The centre faces you flat, the ends bend toward you so each
+ * end image curves along its length, and the ends fade into the page.
+ *
+ * A CSS box can't bend, so every tile is cut into SLICES vertical strips,
+ * each a flat facet of the cylinder showing its share of the image. The
+ * strips sit still inside their tile, each turned its own few degrees
+ * round the cylinder's axis, and the tile (preserve-3d) is what moves: one
+ * rotateY about that same axis carries the whole tile along the arc. A
+ * tile is one animation, so its strips can never drift apart or show
+ * different images. Only a tile's delay differs, and that sets where on
+ * the arc it sits. The band is transform-only on the compositor; the fade
+ * is a static mask over it.
+ *
+ * The only JS is a ResizeObserver that sizes the loop, and a handler that
+ * hands a tile its next image each time it wraps, out of sight.
+ * ─────────────────────────────────────────────────────────────── */
+
+// Strips per tile. Each is a few degrees of arc, too little to read as a
+// facet; fewer starts to show corners along the top and bottom edges. A
+// tight curve wraps a tile round a wide arc, so it needs this many.
+const SLICES = 16;
+
+// Camera distance from the screen, as a multiple of the cylinder's radius.
+// Just past the axis, so the ends come right up to the lens and swell; much
+// further back and the row flattens out however tight the cylinder.
+const CAMERA = 1.6;
+
+/**
+ * Cylinder radius, as a share of the hero's width, that puts the frame's
+ * edge `bend` radians round the arc as seen through the camera:
+ * r·sinθ · CAMERA / (CAMERA − 1 + cosθ) = width / 2, solved for r.
+ */
+function arc(bend: number) {
+  return (CAMERA - 1 + Math.cos(bend)) / (2 * CAMERA * Math.sin(bend));
+}
+
+// A tile is never wider than this share of the hero, so a phone still
+// shows its neighbours instead of one tile edge to edge.
+const MAX_WIDTH = 55;
+
+/**
+ * Lays the loop on the cylinder. The radius puts the frame's edge `bend`
+ * radians round the arc (see `arc`). Angles come back in degrees: `unit`
+ * is the arc one tile-height spans, `limit` how far round a tile's centre
+ * can go before the whole tile is off-screen, and `sweep` how far round
+ * the loop's ends sit. The loop reaches past `limit`, so a tile only ever
+ * wraps out of sight, and is rounded up to a whole number of tiles so the
+ * gap never stretches.
+ */
+function measure(
+  width: number,
+  height: number,
+  tile: number,
+  aspect: number,
+  gap: number,
+  bend: number,
+) {
+  const h = Math.min(
+    (tile / 100) * height,
+    ((MAX_WIDTH / 100) * width) / aspect,
+  );
+  const radius = width * arc(bend);
+  if (!(h > 0) || !(radius > 0))
+    return { columns: 2, sweep: 0, unit: 0, limit: 0 };
+  const deg = (rad: number) => (rad * 180) / Math.PI;
+  const unit = deg(h / radius);
+  const pitch = (aspect + gap / 100) * unit;
+  const limit = deg(bend) + (aspect * unit) / 2;
+  // Capped so a hero squeezed to a sliver can't mount thousands of tiles.
+  const columns = Math.min(60, Math.max(2, Math.ceil((2 * limit) / pitch)));
+  const round = (n: number) => +n.toFixed(4);
+  const sweep = round((columns * pitch) / 2);
+  return {
+    columns,
+    sweep,
+    unit: round(unit),
+    limit: round(Math.min(sweep, limit)),
+  };
+}
+
+export type TiltedGridImage = {
+  src: string;
+  /** Only used if you drop the decorative treatment; the band is aria-hidden. */
+  alt?: string;
+};
+
+export type TiltedGridHeroProps = {
+  /**
+   * Images run along the row in order. A tile takes its next image each
+   * time it wraps off-screen, so the whole list plays through however
+   * few tiles the frame needs. Short lists simply repeat.
+   */
+  images: TiltedGridImage[];
+  /**
+   * Seconds for the row to advance by one tile. Speed is per tile, not per
+   * crossing, so a phone and an ultrawide move at the same pace.
+   * @default 4
+   */
+  speed?: number;
+  /** Tile height, as a percentage of the hero's height. @default 26 */
+  tileHeight?: number;
+  /** Tile width divided by tile height. @default 16 / 9 */
+  aspectRatio?: number;
+  /** Space between tiles, as a percentage of a tile's height. @default 6 */
+  gap?: number;
+  /** Vertical centre of the row, as a percentage of the hero's height. @default 56 */
+  axis?: number;
+  /**
+   * How far the row has bent round by the frame's edge, in degrees. Higher
+   * curls the ends harder toward the viewer. Clamped to 5–85.
+   * @default 80
+   */
+  curve?: number;
+  /** Width of the fade at each end, as a percentage of the hero's width. @default 12 */
+  fade?: number;
+  /** Content rendered above the band. */
+  children?: React.ReactNode;
+  className?: string;
+};
+
+export function TiltedGridHero({
+  images,
+  speed = 4,
+  tileHeight = 26,
+  aspectRatio = 16 / 9,
+  gap = 6,
+  axis = 56,
+  curve = 80,
+  fade = 12,
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & TiltedGridHeroProps) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const id = React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  const orbit = `tgh-o-${id}`;
+  const tile = `tgh-t-${id}`;
+  const bend = (Math.min(85, Math.max(5, curve)) * Math.PI) / 180;
+
+  // Null until the observer has measured the hero. The band stays hidden
+  // until then, so a first paint laid out for the wrong size never shows.
+  const [layout, setLayout] = React.useState<ReturnType<typeof measure> | null>(
+    null,
+  );
+
+  // The image each tile shows, as a position in the run of images. It
+  // only changes when the tile wraps, which is out of sight, so a resize
+  // never swaps an image on screen either.
+  const [shown, setShown] = React.useState<Record<number, number>>({});
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      const next = measure(width, height, tileHeight, aspectRatio, gap, bend);
+      setLayout((prev) =>
+        prev?.columns === next.columns &&
+        prev.sweep === next.sweep &&
+        prev.unit === next.unit
+          ? prev
+          : next,
+      );
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tileHeight, aspectRatio, gap, bend]);
+
+  // Fetch every image up front. A tile picks up its next one just before
+  // it comes back into view, too late to start loading it then.
+  React.useEffect(() => {
+    for (const { src } of images) new Image().src = src;
+  }, [images]);
+
+  const { columns, sweep, unit, limit } =
+    layout ?? measure(1200, 560, tileHeight, aspectRatio, gap, bend);
+
+  // Every length is a multiple of the tile's height, which follows the
+  // hero's height until MAX_WIDTH caps it on narrow screens.
+  const u = (n: number) =>
+    `calc(${+n.toFixed(4)} * min(${tileHeight}cqh, ${+(
+      MAX_WIDTH / aspectRatio
+    ).toFixed(4)}cqw))`;
+
+  const r = 100 * arc(bend);
+  const radius = `${+r.toFixed(3)}cqw`;
+  // Out to the axis, round it, back in: a box sits on the cylinder at the
+  // angle rotateY gives it.
+  const turn = (deg: number) =>
+    `translateZ(${radius}) rotateY(${+deg.toFixed(4)}deg) translateZ(-${radius})`;
+
+  // Beyond `limit` a tile is wholly off-screen, so it is hidden there. The
+  // loop's ends, where it wraps, fall inside that stretch, and so do tiles
+  // swinging round behind the camera.
+  const hide = +(((sweep - limit) / (2 * sweep || 1)) * 100).toFixed(4);
+  const css =
+    `@keyframes ${orbit}{` +
+    `from{transform:${turn(-sweep)}}to{transform:${turn(sweep)}}` +
+    `0%,${hide}%,${100 - hide}%,100%{visibility:hidden}` +
+    `${hide + 0.001}%,${100 - hide - 0.001}%{visibility:visible}}` +
+    // Pausing rather than removing the motion keeps the band whole: every
+    // tile is already placed by its negative delay, so it freezes as a
+    // finished still.
+    `@media(prefers-reduced-motion:reduce){.${tile}{animation-play-state:paused}}`;
+
+  const share = aspectRatio / SLICES;
+  const duration = columns * speed;
+  const mask = `linear-gradient(90deg,transparent,#000 ${fade}%,#000 ${
+    100 - fade
+  }%,transparent)`;
+
+  return (
+    <div
+      ref={ref}
+      className={cn("relative overflow-hidden", className)}
+      {...props}
+      style={{ containerType: "size", ...props.style }}
+    >
+      <style>{css}</style>
+
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 transition-opacity duration-500"
+        style={{
+          opacity: layout ? 1 : 0,
+          // A shared vanishing point on the row's centre line, so the ends
+          // grow evenly above and below it as they come toward the viewer.
+          perspective: `${+(r * CAMERA).toFixed(3)}cqw`,
+          perspectiveOrigin: `50% ${axis}%`,
+          maskImage: mask,
+          WebkitMaskImage: mask,
+        }}
+      >
+        {Array.from({ length: columns }, (_, t) => {
+          // Tile `columns - 1` starts nearest the exit and tile 0 furthest
+          // back, so this numbers tiles in the order they come on.
+          const first = columns - 1 - t;
+          const img = images[(shown[t] ?? first) % Math.max(images.length, 1)];
+          return (
+            <div
+              key={t}
+              className={cn(tile, "absolute")}
+              style={{
+                left: `calc(50% - ${u(aspectRatio / 2)})`,
+                top: `calc(${axis}% - ${u(0.5)})`,
+                width: u(aspectRatio),
+                height: u(1),
+                transformStyle: "preserve-3d",
+                // Tile t starts t tiles along the loop.
+                animation: `${orbit} ${duration}s linear ${-t * speed}s infinite`,
+              }}
+              onAnimationIteration={(e) => {
+                // elapsedTime counts whole loops, missed events included.
+                const lap = Math.round(e.elapsedTime / duration);
+                setShown((prev) => {
+                  const next = lap * columns + first;
+                  return prev[t] === next ? prev : { ...prev, [t]: next };
+                });
+              }}
+            >
+              {Array.from({ length: SLICES }, (_, k) => (
+                <div
+                  key={k}
+                  className={cn(
+                    "absolute top-0 overflow-hidden bg-muted",
+                    k === 0 && "rounded-l-lg",
+                    k === SLICES - 1 && "rounded-r-lg",
+                  )}
+                  style={{
+                    // Every strip starts at the tile's centre and is turned
+                    // round the axis to its own place on the arc.
+                    left: u((aspectRatio - share) / 2),
+                    // A pixel wider than its share, so neighbouring facets
+                    // overlap and no hairline opens between them. The last
+                    // has no neighbour to cover.
+                    width:
+                      k === SLICES - 1 ? u(share) : `calc(${u(share)} + 1px)`,
+                    height: u(1),
+                    transform: turn(
+                      (aspectRatio / 2 - (k + 0.5) * share) * unit,
+                    ),
+                  }}
+                >
+                  {img ? (
+                    <img
+                      src={img.src}
+                      alt={k === 0 ? (img.alt ?? "") : ""}
+                      draggable={false}
+                      className="absolute top-0 max-w-none object-cover"
+                      style={{
+                        left: u(-k * share),
+                        width: u(aspectRatio),
+                        height: u(1),
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+export default TiltedGridHero;
+
+
+
+SE NUBLA POR UN CASO TRISTE Y ESTE COMPONENTE ES LAS NUBES DE NOCHE
+import React, { useEffect, useRef } from 'react';
+
+/**
+ * ProceduralGroundBackground
+ * A WebGL 2D background featuring topographic neon lines and sand-ripple movement.
+ * Optimized for performance using fragment shaders.
+ */
+const ProceduralGroundBackground: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const gl = canvas.getContext('webgl');
+    if (!gl) return;
+
+    const vsSource = `
+      attribute vec2 position;
+      void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+      }
+    `;
+
+    const fsSource = `
+      precision highp float;
+      uniform float u_time;
+      uniform vec2 u_resolution;
+
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+        
+        // Ground Perspective Simulation
+        float depth = 1.0 / (uv.y + 1.15);
+        vec2 gridUv = vec2(uv.x * depth, depth + u_time * 0.15);
+        
+        // Layered Procedural Noise for Terrain
+        float n = noise(gridUv * 3.5);
+        float ripples = sin(gridUv.y * 18.0 + n * 8.0 + u_time * 0.5);
+        
+        // Neon Topographic Lines
+        float topoLine = smoothstep(0.03, 0.0, abs(ripples));
+        
+        // Color Palette
+        vec3 baseColor = vec3(0.04, 0.03, 0.12); // Deep Space
+        vec3 accentColor = vec3(0.1, 0.3, 0.8);   // Electric Blue
+        vec3 neonColor = vec3(0.6, 0.2, 1.0);     // Neon Purple
+        
+        // Composite
+        vec3 finalColor = mix(baseColor, accentColor, n * 0.6);
+        finalColor += topoLine * neonColor * depth * 0.4;
+        
+        // Horizon Fog / Fade
+        float fade = smoothstep(0.1, -1.0, uv.y);
+        finalColor *= (1.0 - length(uv) * 0.45) * (1.0 - fade);
+
+        gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `;
+
+    const createShader = (gl: WebGLRenderingContext, type: number, source: string) => {
+      const shader = gl.createShader(type)!;
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      return shader;
+    };
+
+    const program = gl.createProgram()!;
+    gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSource));
+    gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,  1, -1, -1,  1,
+      -1,  1,  1, -1,  1,  1
+    ]), gl.STATIC_DRAW);
+
+    const posAttrib = gl.getAttribLocation(program, "position");
+    gl.enableVertexAttribArray(posAttrib);
+    gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+
+    const timeLoc = gl.getUniformLocation(program, "u_time");
+    const resLoc = gl.getUniformLocation(program, "u_resolution");
+
+    let animationFrameId: number;
+    const render = (time: number) => {
+      const { innerWidth: width, innerHeight: height } = window;
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        gl.viewport(0, 0, width, height);
+      }
+
+      gl.uniform1f(timeLoc, time * 0.001);
+      gl.uniform2f(resLoc, width, height);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    animationFrameId = requestAnimationFrame(render);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 w-full h-full bg-zinc-950 -z-10">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full block touch-none"
+        style={{ filter: 'contrast(1.1) brightness(0.9)' }}
+      />
+    </div>
+  );
+};
+
+export default ProceduralGroundBackground;
