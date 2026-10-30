@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CloudShader } from "@/components/ui/cloud-shader";
 import Cloudscape from "@/components/ui/cloudscape";
-import { TiltedGridHero, TiltedGridImage } from "@/components/ui/tilted-grid-hero";
+import DiscCascadeCarousel, { DiscCascadeItem } from "@/components/ui/disc-cascade-carousel";
 import ProceduralGroundBackground from "@/components/ui/procedural-ground-background";
 const nubesVideoSrc = "/NUBES.mp4";
 import {
@@ -121,12 +121,29 @@ const TALKS_DATA: TalkVideo[] = [
   },
 ];
 
-function buildVideoTileImages(talks: TalkVideo[]): TiltedGridImage[] {
-  return talks.map((talk) => ({
-    src: talk.thumbnail,
-    alt: `${talk.title} — ${talk.speaker}`,
-  }));
-}
+const DISC_ITEMS_DATA: DiscCascadeItem[] = TALKS_DATA.map((talk) => ({
+  title: talk.title,
+  src: talk.thumbnail,
+  alt: `${talk.title} — ${talk.speaker}`,
+  credits: [
+    { label: "Ponente", value: talk.speaker },
+    { label: "Rol", value: talk.role },
+    { label: "Duración", value: talk.duration },
+    { label: "Enfoque", value: talk.category },
+  ],
+  reviews: [
+    {
+      source: "Testimonio CAI",
+      quote: talk.quote.replace(/^[“”"']+|[“”"']+$/g, ""),
+      stars: 5,
+    },
+    {
+      source: "Sinopsis",
+      quote: talk.synopsis,
+      stars: 5,
+    },
+  ],
+}));
 
 // --- Events Data (Admin-published) ---
 export interface CommunityEvent {
@@ -554,21 +571,6 @@ export function App() {
     }
   };
 
-  // Handle clicking inside the TiltedGridHero carousel
-  const handleCarouselClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    if (target.closest("[data-talk-trigger]")) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickRatioX = (e.clientX - rect.left) / Math.max(rect.width, 1);
-    const index = Math.min(
-      TALKS_DATA.length - 1,
-      Math.max(0, Math.floor(clickRatioX * TALKS_DATA.length)),
-    );
-    setSelectedTalk(TALKS_DATA[index]);
-    setIsPlayingVideo(false);
-  };
-
   const handleAdminPublish = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEvTitle.trim() || !newEvDay.trim()) return;
@@ -601,8 +603,6 @@ export function App() {
     setParticipantEmail("");
     setSensoryNotes("");
   };
-
-  const carouselImages = buildVideoTileImages(TALKS_DATA);
 
   return (
     <div className="relative min-h-screen w-full text-white selection:bg-[#f4eec7] selection:text-[#0d2b4e]">
@@ -990,65 +990,58 @@ export function App() {
           </section>
 
           {/* -------------------------------------------------------------------
-              ACTO 4: CARROUSEL (TiltedGridHero DE RESOURCES.TXT TAL CUAL)
-              Con la misma animación Blurred -> Focus y fuente original
+              ACTO 4: CARROUSEL DE DISCOS (DiscCascadeCarousel)
+              Con efecto de blur en las orillas del marco para encajar con la página
           ------------------------------------------------------------------- */}
-          <section id="charlas" className="relative w-full py-16">
+          <section id="charlas" className="relative w-full py-16 px-4 sm:px-6">
             <ScrollBlurReveal maxBlur={18} className="w-full">
-              <div className="text-center px-6 mb-6">
+              <div className="text-center px-6 mb-8">
                 <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-[#9dcdff] mb-3">
                   <Film className="w-3.5 h-3.5" />
                   Charlas de Conciencia & Testimonios CAI
                 </span>
                 <p className="text-sm sm:text-base text-white/85 font-light">
-                  Haz clic sobre el diálogo que llame tu atención para abrir el reproductor
+                  Explora las historias de nuestra comunidad • Selecciona cualquier disco para ver la charla completa
                 </p>
               </div>
 
-              {/* COMPONENTE TiltedGridHero DE RESOURCES.TXT SIN CAMBIARLE NADA */}
-              <TiltedGridHero
-                images={carouselImages}
-                speed={5}
-                tileHeight={42}
-                aspectRatio={16 / 9}
-                gap={7}
-                axis={50}
-                curve={76}
-                fade={10}
-                onClick={handleCarouselClick}
-                className="w-full h-[560px] md:h-[680px] cursor-pointer group"
-              >
-                <div className="relative z-20 h-full w-full flex flex-col justify-between items-center py-8 px-6 pointer-events-none">
-                  <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-black/50 backdrop-blur-md text-xs uppercase tracking-[0.22em] text-white">
-                    <Play className="w-3.5 h-3.5 text-[#5cb3ff] fill-[#5cb3ff]" />
-                    <span>Haz clic en cualquier charla para reproducir</span>
-                  </div>
+              {/* Marco con efecto de blur en las orillas para fundirse fluidamente con el cielo nocturno */}
+              <div className="relative w-full max-w-7xl mx-auto rounded-3xl overflow-hidden shadow-2xl border border-white/10">
+                <DiscCascadeCarousel
+                  items={DISC_ITEMS_DATA}
+                  brand="CAI • IMPULSA"
+                  nav={[{ label: "Charlas" }, { label: "Testimonios" }]}
+                  indexLabel="Catálogo"
+                  defaultIndex={0}
+                  loop
+                  autoplay={4500}
+                  background="radial-gradient(120% 90% at 50% 40%, rgba(13, 26, 45, 0.88), rgba(3, 7, 16, 0.98))"
+                  color="#ecebe7"
+                  serif="Playfair Display, Georgia, serif"
+                  sans="DM Sans, sans-serif"
+                  display="Playfair Display, serif"
+                  fontHref="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@400;500;700&display=swap"
+                  hint="Arrastra para explorar • Clic en el disco para ver charla"
+                  ariaLabel="Catálogo de Charlas CAI"
+                  onSelect={(item, index) => {
+                    setSelectedTalk(TALKS_DATA[index]);
+                    setIsPlayingVideo(false);
+                  }}
+                />
 
-                  {/* Selector directo de charlas */}
-                  <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 max-w-5xl mx-auto">
-                    {TALKS_DATA.map((talk, idx) => (
-                      <button
-                        key={talk.id}
-                        data-talk-trigger="true"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTalk(talk);
-                          setIsPlayingVideo(false);
-                        }}
-                        className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/65 hover:bg-[#5cb3ff] text-white hover:text-[#001d34] backdrop-blur-xl transition-all duration-300 text-xs sm:text-sm font-light tracking-wide"
-                      >
-                        <Play className="w-3.5 h-3.5 shrink-0 fill-current" />
-                        <span className="opacity-75 font-mono text-[11px]">
-                          0{idx + 1}
-                        </span>
-                        <span className="truncate max-w-[200px] sm:max-w-[260px]">
-                          {talk.title}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </TiltedGridHero>
+                {/* Sombreado perimetral y difuminado (blur) en las 4 orillas del marco */}
+                <div
+                  className="pointer-events-none absolute inset-0 z-30 rounded-3xl"
+                  style={{
+                    boxShadow: "inset 0 0 90px 45px rgba(3, 8, 18, 0.95), inset 0 0 160px 80px rgba(3, 8, 18, 0.6)",
+                  }}
+                />
+                {/* Bordes con backdrop-blur para suavizar la unión con el fondo */}
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#030812] via-[#030812]/75 to-transparent z-25 backdrop-blur-md [mask-image:linear-gradient(to_bottom,black_25%,transparent)]" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#030812] via-[#030812]/75 to-transparent z-25 backdrop-blur-md [mask-image:linear-gradient(to_top,black_25%,transparent)]" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-[#030812] via-[#030812]/75 to-transparent z-25 backdrop-blur-md [mask-image:linear-gradient(to_right,black_25%,transparent)]" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-28 bg-gradient-to-l from-[#030812] via-[#030812]/75 to-transparent z-25 backdrop-blur-md [mask-image:linear-gradient(to_left,black_25%,transparent)]" />
+              </div>
             </ScrollBlurReveal>
           </section>
 
